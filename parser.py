@@ -15,6 +15,9 @@ class TorrentData:
         self.info_hash = hashlib.sha1(bencode.bencode(info)).digest()
         self.files = self.get_files_list(info)
 
+        self.total_length = sum(file_info['length'] for file_info in self.files)
+        print(self.trackers)
+
     def get_announce_list(self, data):
         return [url[0] for url in data['announce-list']] if 'announce-list' in data else [data['announce']]
 
