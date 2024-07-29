@@ -21,4 +21,4 @@ if __name__ == '__main__':
         logging.info(trackers_manager.available_peers.get_nowait())
     '''
 
-    # peers_manager = PeerManager(torrent_file, trackers_manager, segment_writer)
+    #peers_manager = PeerManager(torrent_file, trackers_manager, segment_writer)
