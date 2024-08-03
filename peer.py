@@ -1,6 +1,11 @@
 import bitstring
 import socket
 import logging
+from events import Events
+
+
+class PeerEvents(Events):
+    __events__ = ('on_requesting_segment', 'on_receiving_block')
 
 
 class Peer:
@@ -17,6 +22,8 @@ class Peer:
         self._peer_choked = True
         self._interested = False
         self._choked = True
+
+        self.events = PeerEvents()
 
     def connect(self) -> bool:
         try:
@@ -70,6 +77,7 @@ class Peer:
         self._peer_choked = value
     # endregion
 
+    # А зочем???
     def check_for_piece(self, index: int) -> bool:
         return self.available_files[index]
 
@@ -104,3 +112,7 @@ class Peer:
     def get_message(self):
         pass
         # Сделать после создания всех типов сообщений
+
+    def close(self):
+        # self.close_connection()
+        pass

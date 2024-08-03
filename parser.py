@@ -1,5 +1,6 @@
 import hashlib
 import bencode
+from math import ceil
 
 
 class TorrentData:
@@ -17,6 +18,7 @@ class TorrentData:
         self.files = self._get_files_list(info)
 
         self.total_length = sum(file_info['length'] for file_info in self.files)
+        self.total_segments = ceil(self.total_length / self.segment_length)
 
     def _get_announce_list(self, data):
         return [url[0] for url in data['announce-list']] if 'announce-list' in data else [data['announce']]
