@@ -19,6 +19,7 @@ class Handshake(Message):
     """
     <19><BitTorrent protocol><0x0000000000000000><info_hash><peer_id>
     """
+
     def __init__(self, info_hash: bytes, peer_id):
         self.info_hash = info_hash
         self.peer_id = peer_id
@@ -36,6 +37,7 @@ class Interested(Message):
     """
     <0001><2>
     """
+
     def encode(self):
         return pack('!IB', 1, 2)
 
@@ -51,6 +53,7 @@ class Choked(Message):
     """
     <0001><1>
     """
+
     def encode(self):
         return pack('!IB', 1, 1)
 
@@ -59,3 +62,24 @@ class Choked(Message):
         if message_id != 1:
             logging.error(f'При запросе на снятие заглушки был получен некорректный индентификатор: {message_id}')
         return Choked()
+
+
+class PeerSegments(Message):
+    """
+    <segments_length + 1><5><segments_like_bytes>
+    """
+
+    def __init__(self, segments: bitstring.BitArray):
+        self.segments = segments
+        self.segments_like_bytes = segments.tobytes()
+
+    def encode(self):
+        return pack(f'!IB{len(self.segments_like_bytes)}s', len(self.segments_like_bytes) + 1, 5,
+                    self.segments_like_bytes)
+
+    @staticmethod
+    def decode(message):
+        message_length, message_id = unpack('!IB', message[:5])
+        segments = unpack(f'!{message_length -  1}s', message[5:])
+        return PeerSegments(bitstring.BitArray(bytes=segments))
+
