@@ -98,7 +98,7 @@ class RequestsMessage(Message):
         self.block_len = block_len
 
     def encode(self):
-        return pack('!IBIII', 13, 1, self.index, self.byte_offset, self.block_len)
+        return pack('!IBIII', 13, 6, self.index, self.byte_offset, self.block_len)
 
     @staticmethod
     def decode(message):

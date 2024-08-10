@@ -32,6 +32,26 @@ def segments_to_bytes(segments):
     return pieces_to_bytes
 
 
+@pytest.fixture
+def index():
+    return 52
+
+
+@pytest.fixture
+def byte_offset():
+    return 5
+
+
+@pytest.fixture
+def block_len():
+    return 15
+
+
+@pytest.fixture
+def block():
+    return b'Goodbye, Summer'
+
+
 class TestMessages:
     def test_handshake_encode(self, info_hash, peer_id):
         expected = pack(f'!B19s8s20s20s', 19, b'BitTorrent protocol', b'\x00' * 8, info_hash, peer_id)
@@ -80,7 +100,27 @@ class TestMessages:
         assert isinstance(decode_result, Message.PeerSegmentsMessage)
         assert decode_result.segments == segments.tobytes()
 
+    def test_request_message_encode(self, index, byte_offset, block_len):
+        expected = pack(f'!IBIII', 13, 6, index, byte_offset, block_len)
+        assert expected == Message.RequestsMessage(index, byte_offset, block_len).encode()
 
+    def test_request_message_decode(self, index, byte_offset, block_len):
+        data = pack(f'!IBIII', 13, 6, index, byte_offset, block_len)
+        result = Message.RequestsMessage.decode(data)
+        assert isinstance(result, Message.RequestsMessage)
+        assert result.index == index
+        assert result.byte_offset == byte_offset
+        assert result.block_len == block_len
 
+    def test_send_piece_message_encode(self, index, byte_offset, block):
+        expected = pack(f'!IBII{len(block)}s', 9 + len(block), 7, index, byte_offset, block)
+        assert expected == Message.SendPieceMessage(index, byte_offset, block).encode()
 
+    def test_send_piece_message_decode(self, index, byte_offset, block):
+        data = pack(f'!IBII{len(block)}s', 9 + len(block), 7, index, byte_offset, block)
+        result = Message.SendPieceMessage.decode(data)
+        assert isinstance(result, Message.SendPieceMessage)
+        assert result.index == index
+        assert result.byte_offset == byte_offset
+        assert result.data == block
 
