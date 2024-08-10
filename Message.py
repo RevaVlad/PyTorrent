@@ -61,7 +61,7 @@ class UnChoked(Message):
         data_length, message_id = unpack('!IB', message)
         if message_id != 1:
             logging.error(f'При запросе на снятие заглушки был получен некорректный индентификатор: {message_id}')
-        return Choked()
+        return UnChoked()
 
 
 class PeerSegments(Message):
