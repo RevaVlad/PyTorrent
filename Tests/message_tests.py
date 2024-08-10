@@ -74,7 +74,7 @@ class TestMessages:
         data = pack('!IB', 1, 0)
         with caplog.at_level(logging.ERROR):
             Message.InterestedMessage.decode(data)
-            assert "получен некорректный индентификатор: 0" in caplog.text
+            assert 'При запросе на интерес был получен некорректный индентификатор: 0' in caplog.text
 
     def test_unchoked_encode(self):
         expected = pack('!IB', 1, 1)
@@ -88,7 +88,7 @@ class TestMessages:
         data = pack('!IB', 1, 3)
         with caplog.at_level(logging.ERROR):
             Message.UnChokedMessage.decode(data)
-            assert "получен некорректный индентификатор: 3" in caplog.text
+            assert 'При запросе на снятие заглушки был получен некорректный индентификатор: 3' in caplog.text
 
     def test_peers_segments_encode(self, segments, segments_to_bytes):
         expected = pack(f'!IB{len(segments_to_bytes)}s', len(segments_to_bytes) + 1, 5, segments_to_bytes)
@@ -146,3 +146,47 @@ class TestMessages:
         assert result.byte_offset == byte_offset
         assert result.block_len == block_len
 
+    def test_continue_connection_message_encode(self):
+        expected = pack('!I', 0)
+        assert expected == Message.ContinueConnectionMessage().encode()
+
+    def test_continue_connection_message_decode(self):
+        data = pack('!I', 0)
+        result = Message.ContinueConnectionMessage.decode(data)
+        assert isinstance(result, Message.ContinueConnectionMessage)
+
+    def test_continue_connection_message_encode_incorrect(self, caplog):
+        data = pack('!I', 3)
+        with caplog.at_level(logging.ERROR):
+            Message.ContinueConnectionMessage.decode(data)
+            assert 'При попытке поддержания соединения было получено неккоректное сообщение: длина не нулевая' in caplog.text
+
+    def test_choked_message_encode(self):
+        expected = pack('!IB', 1, 0)
+        assert expected == Message.ChokedMessage().encode()
+
+    def test_choked_message_decode(self):
+        data = pack('!IB', 1, 0)
+        result = Message.ChokedMessage.decode(data)
+        assert isinstance(result, Message.ChokedMessage)
+
+    def test_choked_message_encode_incorrect(self, caplog):
+        data = pack('!IB', 1, 3)
+        with caplog.at_level(logging.ERROR):
+            Message.ChokedMessage.decode(data)
+            assert 'При запросе на включение заглушки был получен некорректный индентификатор: 3' in caplog.text
+
+    def test_not_interested_message_encode(self):
+        expected = pack('!IB', 1, 3)
+        assert expected == Message.NotInterestedMessage().encode()
+
+    def test_not_interested_message_decode(self):
+        data = pack('!IB', 1, 3)
+        result = Message.NotInterestedMessage.decode(data)
+        assert isinstance(result, Message.NotInterestedMessage)
+
+    def test_not_interested_message_encode_incorrect(self, caplog):
+        data = pack('!IB', 1, 2)
+        with caplog.at_level(logging.ERROR):
+            Message.NotInterestedMessage.decode(data)
+            assert 'При запросе на отсутсвие интереса был получен некорректный индентификатор: 2' in caplog.text
