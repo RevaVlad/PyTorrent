@@ -49,7 +49,7 @@ class Interested(Message):
         return Interested()
 
 
-class Choked(Message):
+class UnChoked(Message):
     """
     <0001><1>
     """
@@ -170,3 +170,33 @@ class ContinueConnectionMessage(Message):
     def decode(message):
         message_length = unpack('!I', message)[0]
         return ContinueConnectionMessage()
+
+
+class ChokedMessage(Message):
+    """
+    <0001><0>
+    """
+    def encode(self):
+        return pack('!IB', 1, 0)
+
+    @staticmethod
+    def decode(message):
+        message_length, message_id = unpack('!IB', message)
+        if message_id != 0:
+            logging.error(f'При запросе на включение заглушки был получен некорректный индентификатор: {message_id}')
+        return ChokedMessage()
+
+
+class NotInterestedMessage(Message):
+    """
+    <0001><3>
+    """
+    def encode(self):
+        return pack('!IB', 1, 3)
+
+    @staticmethod
+    def decode(message):
+        message_length, message_id = unpack('!IB', message)
+        if message_id != 3:
+            logging.error(f'При запросе на отсутсвие интереса был получен некорректный индентификатор: {message_id}')
+        return NotInterestedMessage()
