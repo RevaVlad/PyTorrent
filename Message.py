@@ -172,7 +172,10 @@ class ContinueConnectionMessage(Message):
     @staticmethod
     def decode(message):
         message_length = unpack('!I', message)[0]
-        return ContinueConnectionMessage()
+        if message_length != 0:
+            logging.error('При попытке поддержания соединения было получено неккоректное сообщение: длина не нулевая')
+        else:
+            return ContinueConnectionMessage()
 
 
 class ChokedMessage(Message):
