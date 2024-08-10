@@ -43,13 +43,13 @@ def byte_offset():
 
 
 @pytest.fixture
-def block_len():
-    return 15
+def block():
+    return b'Goodbye, Summer'
 
 
 @pytest.fixture
-def block():
-    return b'Goodbye, Summer'
+def block_len(block):
+    return len(block)
 
 
 class TestMessages:
@@ -123,4 +123,26 @@ class TestMessages:
         assert result.index == index
         assert result.byte_offset == byte_offset
         assert result.data == block
+
+    def test_for_have_message_encode(self, index):
+        expected = pack('!IBI', 5, 4, index)
+        assert expected == Message.HaveMessage(index).encode()
+
+    def test_for_have_message_decode(self, index):
+        data = pack('!IBI', 5, 4, index)
+        result = Message.HaveMessage.decode(data)
+        assert isinstance(result, Message.HaveMessage)
+        assert result.piece_index == index
+
+    def test_for_cancel_message_encode(self, index, byte_offset, block_len):
+        expected = pack('!IBIII', 13, 8, index, byte_offset, block_len)
+        assert expected == Message.CancelMessage(index, byte_offset, block_len).encode()
+
+    def test_for_cancel_message_decode(self, index, byte_offset, block_len):
+        data = pack('!IBIII', 13, 8, index, byte_offset, block_len)
+        result = Message.CancelMessage.decode(data)
+        assert isinstance(result, Message.CancelMessage)
+        assert result.piece_index == index
+        assert result.byte_offset == byte_offset
+        assert result.block_len == block_len
 
