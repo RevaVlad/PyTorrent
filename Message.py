@@ -157,3 +157,16 @@ class CancelMessage(Message):
     def decode(message):
         message_length, message_id, piece_index, byte_offset, block_len = unpack('!IBIII', message)
         return CancelMessage(piece_index, byte_offset, block_len)
+
+
+class ContinueConnectionMessage(Message):
+    """
+    <0000>
+    """
+    def encode(self):
+        return pack('!I', 0)
+
+    @staticmethod
+    def decode(message):
+        message_length = unpack('!I', message)[0]
+        return ContinueConnectionMessage()
