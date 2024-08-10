@@ -80,14 +80,15 @@ class PeerSegments(Message):
     @staticmethod
     def decode(message):
         message_length, message_id = unpack('!IB', message[:5])
-        segments = unpack(f'!{message_length -  1}s', message[5:])
+        segments = unpack(f'!{message_length - 1}s', message[5:])
         return PeerSegments(bitstring.BitArray(bytes=segments))
 
 
 class RequestsMessage(Message):
     """
-    <13><6><index><byte_offset><block_len>
+    <0013><6><index><byte_offset><block_len>
     """
+
     def __init__(self, index: int, byte_offset: int, block_len: int):
         self.index = index
         self.byte_offset = byte_offset
@@ -106,6 +107,7 @@ class SendPiece(Message):
     """
     <9 + len(data)><7><index><byte_offset><data>
     """
+
     def __init__(self, index: int, byte_offset: int, data):
         self.index = index
         self.byte_offset = byte_offset
@@ -114,7 +116,25 @@ class SendPiece(Message):
     def encode(self):
         return pack(f'!IBII{len(self.data)}s', 9 + len(self.data), 7, self.index, self.byte_offset, self.data)
 
-    def decode(self, message):
+    @staticmethod
+    def decode(message):
         message_length, message_id = unpack('!IB', message[:5])
         index, byte_offset, data = unpack(f'!II{message_length - 9}s', message[5:])
         return SendPiece(index, byte_offset, data)
+
+
+class PeersPieces(Message):
+    """
+    <0005><4><piece_index>
+    """
+
+    def __init__(self, piece_index):
+        self.piece_index = piece_index
+
+    def encode(self):
+        return pack('!IBI', 5, 4, self.piece_index)
+
+    @staticmethod
+    def decode(message):
+        message_length, message_id, piece_index = unpack('!IBI', message)
+        return PeersPieces(piece_index)
