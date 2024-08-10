@@ -15,7 +15,7 @@ class Message(ABC):
         pass
 
 
-class Handshake(Message):
+class HandshakeMessage(Message):
     """
     <19><BitTorrent protocol><0x0000000000000000><info_hash><peer_id>
     """
@@ -30,10 +30,10 @@ class Handshake(Message):
     @staticmethod
     def decode(message):
         identifier_length, identifier, reserved, info_hash, peer_id = unpack('!B19s8s20s20s', message)
-        return Handshake(info_hash, peer_id)
+        return HandshakeMessage(info_hash, peer_id)
 
 
-class Interested(Message):
+class InterestedMessage(Message):
     """
     <0001><2>
     """
@@ -47,10 +47,10 @@ class Interested(Message):
         if message_id != 2:
             logging.error(f'При запросе на интерес был получен некорректный индентификатор: {message_id}')
         else:
-            return Interested()
+            return InterestedMessage()
 
 
-class UnChoked(Message):
+class UnChokedMessage(Message):
     """
     <0001><1>
     """
@@ -64,10 +64,10 @@ class UnChoked(Message):
         if message_id != 1:
             logging.error(f'При запросе на снятие заглушки был получен некорректный индентификатор: {message_id}')
         else:
-            return UnChoked()
+            return UnChokedMessage()
 
 
-class PeerSegments(Message):
+class PeerSegmentsMessage(Message):
     """
     <segments_length + 1><5><segments_like_bytes>
     """
@@ -83,8 +83,8 @@ class PeerSegments(Message):
     @staticmethod
     def decode(message):
         message_length, message_id = unpack('!IB', message[:5])
-        segments = unpack(f'!{message_length - 1}s', message[5:])
-        return PeerSegments(bitstring.BitArray(bytes=segments))
+        segments, = unpack(f'!{message_length - 1}s', message[5:])
+        return PeerSegmentsMessage(bitstring.BitArray(bytes=bytes(segments)))
 
 
 class RequestsMessage(Message):
@@ -106,7 +106,7 @@ class RequestsMessage(Message):
         return RequestsMessage(index, byte_offset, block_len)
 
 
-class SendPiece(Message):
+class SendPieceMessage(Message):
     """
     <9 + len(data)><7><index><byte_offset><data>
     """
@@ -123,10 +123,10 @@ class SendPiece(Message):
     def decode(message):
         message_length, message_id = unpack('!IB', message[:5])
         index, byte_offset, data = unpack(f'!II{message_length - 9}s', message[5:])
-        return SendPiece(index, byte_offset, data)
+        return SendPieceMessage(index, byte_offset, data)
 
 
-class PeersPieces(Message):
+class HaveMessage(Message):
     """
     <0005><4><piece_index>
     """
@@ -140,7 +140,7 @@ class PeersPieces(Message):
     @staticmethod
     def decode(message):
         message_length, message_id, piece_index = unpack('!IBI', message)
-        return PeersPieces(piece_index)
+        return HaveMessage(piece_index)
 
 
 class CancelMessage(Message):
