@@ -138,3 +138,22 @@ class PeersPieces(Message):
     def decode(message):
         message_length, message_id, piece_index = unpack('!IBI', message)
         return PeersPieces(piece_index)
+
+
+class CancelMessage(Message):
+    """
+    <0013><8><index><byte_offset><block_len>
+    """
+
+    def __init__(self, piece_index: int, byte_offset: int, block_len: int):
+        self.piece_index = piece_index
+        self.byte_offset = byte_offset
+        self.block_len = block_len
+
+    def encode(self):
+        return pack('!IBIII', 13, 8, self.piece_index, self.byte_offset, self.block_len)
+
+    @staticmethod
+    def decode(message):
+        message_length, message_id, piece_index, byte_offset, block_len = unpack('!IBIII', message)
+        return CancelMessage(piece_index, byte_offset, block_len)
