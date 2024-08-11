@@ -1,2 +1,0 @@
-class PartWriter:
-    pass
