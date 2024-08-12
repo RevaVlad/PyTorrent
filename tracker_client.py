@@ -20,7 +20,7 @@ class TrackerEvent(Enum):
 
 class TrackerClient:
 
-    def __init__(self, url, info_hash, peer_id, port):
+    def __init__(self, url, info_hash, peer_id, port, segment_info):
         self._peers = set()
         self.new_peers = Queue()
 
@@ -28,12 +28,13 @@ class TrackerClient:
         self.info_hash = info_hash
         self.peer_id = peer_id
         self.port = port
+        self.segment_info = segment_info
 
         self.request_interval = 60
         self.tracker_id = 0
         self.last_request_time = -1
 
-    async def make_request(self, segment_data, event):
+    async def make_request(self, event):
         current_time = time.monotonic()
         time_diff = current_time - self.last_request_time
         if event != TrackerEvent.STARTED and time_diff < self.request_interval:
@@ -48,9 +49,9 @@ class TrackerClient:
             'peer_id': self.peer_id,
             'port': self.port,
             'compact': 1,
-            'uploaded': segment_data.uploaded,
-            'downloaded': segment_data.downloaded,
-            'left': segment_data.left,
+            'uploaded': self.segment_info.uploaded,
+            'downloaded': self.segment_info.downloaded,
+            'left': self.segment_info.left,
             'event': event.value
         }
 
@@ -85,3 +86,10 @@ class TrackerClient:
         ip = socket.inet_ntoa(row_data[:4])
         port = struct.unpack(">H", row_data[4:6])[0]
         return ip, port
+
+    async def close(self):
+        try:
+            await self.make_request(TrackerEvent.STOPPED)
+        except asyncio.TimeoutError:
+            pass
+
