@@ -1,9 +1,12 @@
 import bitstring
 import socket
 import logging
+
+from wsproto import handshake
+
 import Message
 from pubsub import pub
-from struct import unpack
+from struct import unpack, error as struct_error
 
 
 class Peer:
@@ -22,6 +25,26 @@ class Peer:
         self._interested = False
         self._choked = True
 
+    @staticmethod
+    def analyze_message(message):
+        try:
+            message_length, message_id = unpack('!IB', message[:5])
+        except struct_error:
+            logging.error('Некорректное сообщение, распаковка невозможна')
+            return None
+
+        messages_by_id = {0: Message.ChokedMessage, 1: Message.UnChokedMessage,
+                          2: Message.InterestedMessage, 3: Message.NotInterestedMessage,
+                          4: Message.HaveMessage, 5: Message.PeerSegmentsMessage,
+                          6: Message.RequestsMessage, 7: Message.SendPieceMessage,
+                          8: Message.CancelMessage}
+
+        if message_id not in messages_by_id:
+            logging.error('Некорректное сообщение, указан несуществующий id_message')
+            return None
+        else:
+            return messages_by_id[message_id].decode(message)
+
     def connect(self) -> bool:
         try:
             self.socket = socket.create_connection((self.ip, self.port))
@@ -36,6 +59,7 @@ class Peer:
         try:
             self.socket.send(message)
         except socket.error as error:
+            self.is_active = False
             logging.error(f'Socket error: {error}. Невозможно отправить сообщение {message}')
 
     # region Properties
@@ -78,7 +102,7 @@ class Peer:
         return self.available_files[index]
 
     def handle_got_piece(self, piece: int) -> None:
-        #Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
+        # Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
@@ -126,7 +150,9 @@ class Peer:
                 message = self.buffer[:total_length]
                 self.buffer = self.buffer[total_length:]
 
-            #Написать просмотр, корректно ли сообщение по message_id используя message
+            received_message = self.analyze_message(message)
+            if received_message:
+                yield received_message
 
     def close(self):
         # self.close_connection()
