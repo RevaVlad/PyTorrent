@@ -1,11 +1,9 @@
 import bitstring
 import socket
 import logging
-from events import Events
-
-
-class PeerEvents(Events):
-    __events__ = ('on_requesting_segment', 'on_receiving_block')
+import Message
+from pubsub import pub
+from struct import unpack
 
 
 class Peer:
@@ -17,13 +15,12 @@ class Peer:
         self.handshake = False
         self.is_active = False
         self.socket = None
+        self.buffer = b''
 
         self._peer_interested = False
         self._peer_choked = True
         self._interested = False
         self._choked = True
-
-        self.events = PeerEvents()
 
     def connect(self) -> bool:
         try:
@@ -66,7 +63,7 @@ class Peer:
     def peer_interested(self, value: bool) -> None:
         self._peer_interested = value
         if value and self.choked:
-            self.send_message_to_peer('Реализовать UNCHOKED Message')
+            self.send_message_to_peer(Message.UnChokedMessage().encode())
 
     @property
     def peer_choked(self) -> bool:
@@ -77,41 +74,59 @@ class Peer:
         self._peer_choked = value
     # endregion
 
-    # А зочем???
     def check_for_piece(self, index: int) -> bool:
         return self.available_files[index]
 
     def handle_got_piece(self, piece: int) -> None:
-        # Занести в bit_field по индексу piece что у нас теперь есть кусок
-
-        if self.choked and not self.interested:
-            # Отправить сообщение об интересе
+        #Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
+        if self.peer_choked and not self.interested:
+            self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
     def handle_available_piece(self, available_files) -> None:
         self.available_files = available_files
 
-        if self.choked and not self.interested:
-            # Отправить сообщение об интересе
+        if self.peer_choked and not self.interested:
+            self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_piece(self):
-        # Разобраться с библиотекой pubsub и паттерном издатель-подписчик
-        pass
+    def handle_send_piece(self, piece_message) -> None:
+        pub.sendMessage('sendPiece', piece=(piece_message.index, piece_message.byte_offset, piece_message.data))
 
-    def handle_request(self):
-        # Аналогично выше
-        pass
+    def handle_request(self, request) -> None:
+        if not self.peer_choked and self.peer_interested:
+            pub.sendMessage('requestPiece', request=request, peer = self)
 
-    def handle_handshake(self):
-        # Отправляем сообщение handshake
-        self.handshake = True
-        # Обновить буфер
-        # Обработать возможные исключения(отклонение и подобные)
+    def handle_handshake(self) -> bool:
+        if len(self.buffer) >= 19 and unpack('!B', self.buffer[:1]) == 19:
+            handshake_message = Message.HandshakeMessage.decode(self.buffer)
+            self.handshake = True
+            self.buffer = self.buffer[68:]
+            return True
+        return False
+
+    def handle_continue_connection(self) -> bool:
+        if len(self.buffer) >= 4 and unpack('!I', self.buffer[0:4]) == 0:
+            continue_connection_message = Message.ContinueConnectionMessage.decode(self.buffer)
+            return True
+        else:
+            return False
 
     def get_message(self):
-        pass
-        # Сделать после создания всех типов сообщений
+        while len(self.buffer) > 4 and self.is_active:
+            if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection:
+                continue
+
+            message_length, = unpack("!I", self.buffer[:4])
+            total_length = message_length + 4
+
+            if len(self.buffer) < total_length:
+                break
+            else:
+                message = self.buffer[:total_length]
+                self.buffer = self.buffer[total_length:]
+
+            #Написать просмотр, корректно ли сообщение по message_id используя message
 
     def close(self):
         # self.close_connection()
