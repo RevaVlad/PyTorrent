@@ -20,9 +20,9 @@ class HandshakeMessage(Message):
     <19><BitTorrent protocol><0x0000000000000000><info_hash><peer_id>
     """
 
-    def __init__(self, info_hash: bytes, peer_id):
+    def __init__(self, info_hash: bytes, peer_id=None):
         self.info_hash = info_hash
-        self.peer_id = peer_id
+        self.peer_id = peer_id if peer_id is not None else b'\x00' * 20
 
     def encode(self):
         return pack(f'!B19s8s20s20s', 19, b'BitTorrent protocol', b'\x00' * 8, self.info_hash, self.peer_id)

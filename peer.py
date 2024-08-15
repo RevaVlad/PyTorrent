@@ -1,9 +1,6 @@
 import bitstring
 import socket
 import logging
-
-from wsproto import handshake
-
 import Message
 from pubsub import pub
 from struct import unpack, error as struct_error
@@ -14,7 +11,7 @@ class Peer:
         self.ip = ip
         self.port = port
         self.number_of_peaces = number_of_pieces
-        self.available_files = bitstring.BitArray(number_of_pieces)
+        self.bitfield = bitstring.BitArray(number_of_pieces)
         self.handshake = False
         self.is_active = False
         self.socket = None
@@ -99,7 +96,7 @@ class Peer:
     # endregion
 
     def check_for_piece(self, index: int) -> bool:
-        return self.available_files[index]
+        return self.bitfield[index]
 
     def handle_got_piece(self, piece: int) -> None:
         # Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
@@ -108,7 +105,7 @@ class Peer:
             self.interested = True
 
     def handle_available_piece(self, available_files) -> None:
-        self.available_files = available_files
+        self.bitfield = available_files
 
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
