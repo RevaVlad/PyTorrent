@@ -98,15 +98,16 @@ class Peer:
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
 
-    def handle_got_piece(self, piece: int) -> None:
+    def handle_got_piece(self, peer, piece: int) -> None:
         # Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
+        pub.sendMessage('updatePartBitfield', peer, piece)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_available_piece(self, available_files) -> None:
-        self.bitfield = available_files
-
+    def handle_available_piece(self, available_files, peer) -> None:
+        self.bitfield |= available_files
+        pub.sendMessage('updateAllBitfield', peer)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
@@ -116,7 +117,7 @@ class Peer:
 
     def handle_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
-            pub.sendMessage('requestPiece', request=request, peer = self)
+            pub.sendMessage('requestPiece', request=request, peer=self)
 
     def handle_handshake(self) -> bool:
         if len(self.buffer) >= 19 and unpack('!B', self.buffer[:1]) == 19:

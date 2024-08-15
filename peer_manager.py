@@ -2,6 +2,7 @@ import logging
 import errno
 import asyncio
 import Message
+from pubsub import pub
 import peer as peer_class
 from block import Block
 from math import ceil
@@ -21,6 +22,10 @@ class PeerManager:
         self.downloaded_blocks = []
         self.pending_blocks = []
         self.missing_blocks = asyncio.Queue()
+
+        pub.subscribe(self.request_piece, 'requestAllPiece')
+        pub.subscribe(self.peers_bitfield_update_all, 'updateAllBitfield')
+        pub.subscribe(self.peers_bitfield_update_piece, 'updatePartBitfield')
 
     def close(self):
         self.peer.close()
@@ -122,7 +127,7 @@ class PeerManager:
             case Message.HaveMessage():
                 peer.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
-                peer.handle_available_piece(new_message)
+                peer.handle_available_piece(new_message, peer)
             case Message.RequestsMessage():
                 peer.handle_request(new_message)
             case Message.SendPieceMessage():
