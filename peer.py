@@ -12,7 +12,7 @@ class Peer:
     def __init__(self, ip, number_of_pieces,  port=6881):
         self.ip = ip
         self.port = port
-        self.number_of_peaces = number_of_pieces
+        self.number_of_pieces = number_of_pieces
         self.bitfield = bitstring.BitArray(number_of_pieces)
         self.handshake = False
         self.is_active = False
@@ -102,27 +102,28 @@ class Peer:
 
     def handle_got_piece(self, peer, piece: int) -> None:
         # Нет кода для piece, нужно поставить self.avliable_files[piece.index] = True
-        pub.sendMessage('updatePartBitfield', peer, piece)
+        pub.sendMessage('updatePartBitfield', peer=peer, piece=piece)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_available_piece(self, available_files, peer) -> None:
-        self.bitfield |= available_files
-        pub.sendMessage('updateAllBitfield', peer)
+    def handle_available_piece(self, peer) -> None:
+        self.bitfield |= peer.bitfield
+        pub.sendMessage('updateAllBitfield', peer=peer)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
     def handle_send_piece(self, piece_message) -> None:
-        pub.sendMessage('sendPiece', piece=(piece_message.index, piece_message.byte_offset, piece_message.data))
+        # Переделать когда появится piece на отправку с piece=(index, byte_offset, data)
+        pub.sendMessage('sendPiece', piece=piece_message)
 
     def handle_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
             pub.sendMessage('requestPiece', request=request, peer=self)
 
     def handle_handshake(self) -> bool:
-        if len(self.buffer) >= 19 and unpack('!B', self.buffer[:1]) == 19:
+        if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
             handshake_message = Message.HandshakeMessage.decode(self.buffer)
             self.handshake = True
             self.buffer = self.buffer[68:]
@@ -130,15 +131,15 @@ class Peer:
         return False
 
     def handle_continue_connection(self) -> bool:
-        if len(self.buffer) >= 4 and unpack('!I', self.buffer[0:4]) == 0:
+        if len(self.buffer) >= 4 and unpack('!I', self.buffer[0:4])[0] == 0:
             continue_connection_message = Message.ContinueConnectionMessage.decode(self.buffer)
+            self.buffer = self.buffer[4:]
             return True
-        else:
-            return False
+        return False
 
     def get_message(self):
         while len(self.buffer) > 4 and self.is_active:
-            if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection:
+            if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection():
                 continue
 
             message_length, = unpack("!I", self.buffer[:4])
