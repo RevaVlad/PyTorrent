@@ -1,9 +1,11 @@
+import struct
+
 import bitstring
 import socket
 import logging
 import Message
 from pubsub import pub
-from struct import unpack, error as struct_error
+from struct import unpack
 
 
 class Peer:
@@ -26,7 +28,7 @@ class Peer:
     def analyze_message(message):
         try:
             message_length, message_id = unpack('!IB', message[:5])
-        except struct_error:
+        except struct.error:
             logging.error('Некорректное сообщение, распаковка невозможна')
             return None
 
@@ -37,7 +39,7 @@ class Peer:
                           8: Message.CancelMessage}
 
         if message_id not in messages_by_id:
-            logging.error('Некорректное сообщение, указан несуществующий id_message')
+            logging.error(f'Некорректное сообщение, указан несуществующий id_message: {message_id}')
             return None
         else:
             return messages_by_id[message_id].decode(message)
@@ -48,16 +50,16 @@ class Peer:
             self.socket.setblocking(False)
             self.is_active = True
         except socket.error:
-            logging.error(f'Socket error: Пир {self.ip}:{self.port} не может быть подключён ')
+            logging.error(f'Socket error: Пир {self.ip}:{self.port} не может быть подключён')
             return False
         return True
 
     def send_message_to_peer(self, message: str) -> None:
         try:
             self.socket.send(message)
-        except socket.error as error:
+        except socket.error:
             self.is_active = False
-            logging.error(f'Socket error: {error}. Невозможно отправить сообщение {message}')
+            logging.error(f'Socket error. Невозможно отправить сообщение {message}')
 
     # region Properties
     @property
@@ -99,7 +101,7 @@ class Peer:
         return self.bitfield[index]
 
     def handle_got_piece(self, peer, piece: int) -> None:
-        # Нет кода для pice, нужно поставить self.avliable_files[piece.index] = True
+        # Нет кода для piece, нужно поставить self.avliable_files[piece.index] = True
         pub.sendMessage('updatePartBitfield', peer, piece)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
