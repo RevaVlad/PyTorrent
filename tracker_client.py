@@ -19,6 +19,7 @@ class TrackerEvent(Enum):
 
 
 class TrackerClient:
+    REQUEST_TIMEOUT = 5
 
     def __init__(self, url, info_hash, peer_id, port, segment_info):
         self._peers = set()
@@ -30,19 +31,19 @@ class TrackerClient:
         self.port = port
         self.segment_info = segment_info
 
-        self.request_interval = 60
-        self.tracker_id = 0
-        self.last_request_time = -1
+        self._request_interval = 60
+        self._tracker_id = 0
+        self._last_request_time = -1
 
     async def make_request(self, event):
         current_time = time.monotonic()
-        time_diff = current_time - self.last_request_time
-        if event != TrackerEvent.STARTED and time_diff < self.request_interval:
+        time_diff = current_time - self._last_request_time
+        if event != TrackerEvent.STARTED and time_diff < self._request_interval:
             if event:
                 await asyncio.sleep(time_diff)
             else:
                 return
-        self.last_request_time = time.monotonic()
+        self._last_request_time = time.monotonic()
 
         params = {
             'info_hash': self.info_hash,
@@ -57,7 +58,7 @@ class TrackerClient:
 
         logging.info(f'Making request at "{self.url}" with params: {params}')
         async with aiohttp.ClientSession() as http_client:
-            async with http_client.get(self.url + '?' + urlencode(params), timeout=5) as response:
+            async with http_client.get(self.url + '?' + urlencode(params), timeout=TrackerClient.REQUEST_TIMEOUT) as response:
                 if not response.status == 200:
                     raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
                 data = await response.read()
@@ -67,9 +68,9 @@ class TrackerClient:
         if 'failure reason' in response:
             raise ConnectionError(f'Unable to connect to "{self.url}: {response["failure reason"]}')
 
-        self.request_interval = response.get('interval', self.request_interval)
-        self.request_interval = response.get('min interval', self.request_interval)
-        self.tracker_id = response.get('tracker id', self.tracker_id)
+        self._request_interval = response.get('interval', self._request_interval)
+        self._request_interval = response.get('min interval', self._request_interval)
+        self._tracker_id = response.get('tracker id', self._tracker_id)
 
         peers = response['peers']
         if type(peers) == list:
