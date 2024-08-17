@@ -1,5 +1,6 @@
 import logging
 import errno
+import socket
 import asyncio
 import Message
 from pubsub import pub
@@ -15,10 +16,7 @@ class PeerManager:
         self.peer = peer
         self._working_segment = -1
 
-        self.peer.events.on_requesting_segment += self.upload_segment
-        self.peer.events.on_receiving_block += self.on_get_block
-
-        self.available_pieces = [[0, []] for i in range(len(self.torrent_data.segment_length))]
+        self.available_pieces = [[0, []] for _ in range(self.torrent_data.total_segments)]
         self.downloaded_blocks = []
         self.pending_blocks = []
         self.missing_blocks = asyncio.Queue()
@@ -63,6 +61,9 @@ class PeerManager:
             logging.error('Не указан пир, запросивший сегмент')
         else:
             piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_length
+            block = b'need to update'
+            peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())
+            # нужно обновить !!!
             # block = получить блок по данным запроса
             # if block:\
             #   peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())
@@ -94,25 +95,26 @@ class PeerManager:
             peer.send_message_to_peer(handshake.encode())
 
     @staticmethod
-    def read_socket(socket):
+    def read_socket(socket_read):
         while True:
             data = b''
             while True:
                 try:
-                    buff = socket.recv(4096)
+                    buff = socket_read.recv(4096)
                     if len(buff) <= 0:
                         break
                     data += buff
                 except socket.error as exception:
                     err = exception.args[0]
-                    # Две эти ошибки отвечают за то, что данных пока нет или нужно попробовать сделать запрос позже.
-                    if err != errno.EAGAIN or err != errno.EWOULDBLOCK:
-                        logging.debug("Произошла ошибка сокета: {}".format(err))
+                    # Две эти ошибки отвечают за то, что нужно попробовать сделать запрос позже.
+                    if err != errno.EAGAIN and err != errno.EWOULDBLOCK:
+                        logging.error(f"Произошла ошибка сокета: {exception.args[1]}")
                     break
 
             return data
 
-    def get_new_message(self, new_message: Message.Message, peer: peer_class):
+    @staticmethod
+    def get_new_message(new_message: Message.Message, peer: peer_class):
         match new_message:
             case Message.HandshakeMessage() | Message.ContinueConnectionMessage:
                 logging.error(f'Обработка {new_message} производится отедльно')
