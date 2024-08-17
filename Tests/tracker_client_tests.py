@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import httpx
 
@@ -92,6 +93,7 @@ class TestTrackerClient:
         new_peers = [client.new_peers.get_nowait() for _ in range(len(peers))]
         for actual_peer, expected_peer in zip(new_peers, peers):
             assert actual_peer[0] == expected_peer['ip'] and actual_peer[1] == expected_peer['port']
+            # assert actual_peer == (expected_peer['ip'], expected_peer['port'])
 
     '''
     def test_compact_response(self, good_tracker, info_hash, peer_id, port, segment_info, compact_response, peers):
@@ -105,6 +107,7 @@ class TestTrackerClient:
     '''
 
     def test_last_message(self, good_tracker, info_hash, peer_id, port, segment_info, caplog):
+        caplog.set_level(logging.INFO)
         client = tracker_client.TrackerClient(good_tracker, info_hash, peer_id, port, segment_info)
         asyncio.run(client.close())
         assert "'event': 'stopped'" in caplog

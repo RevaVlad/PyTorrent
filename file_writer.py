@@ -102,34 +102,7 @@ class FileWriter:
         return result
 
 
-class FakeTorrent:
-    files = [{'path': 'one.txt', 'length': 1},
-             {'path': 'folder/two.txt', 'length': 1},
-             {'path': 'folder/three.txt', 'length': 6}]
-    segment_length = 3
-    name = 'test'
 
 
 if __name__ == '__main__':
-    async def main():
-        fake_torrent = FakeTorrent()
-
-        with FileWriter(fake_torrent) as file_writer:
-            await asyncio.gather(file_writer.write_segment(0, b'111'),
-                                 file_writer.write_segment(1, b'222'),
-                                 file_writer.write_segment(2, b'333'))
-
-            results = await asyncio.gather(file_writer.read_segment(0),
-                                           file_writer.read_segment(1),
-                                           file_writer.read_segment(2))
-            print(results)
-
-        for dir_path, dir_names, filenames in os.walk('test'):
-            for file in filenames:
-                data = open(dir_path + '/' + file, 'rb').read()
-                print(f"{file} - {data}, length - {len(data)}")
-
-        shutil.rmtree('test')
-
-
-    asyncio.run(main())
+    pass
