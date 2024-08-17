@@ -124,7 +124,7 @@ class Peer:
 
     def handle_handshake(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
-            handshake_message = Message.HandshakeMessage.decode(self.buffer)
+            handshake_message = Message.HandshakeMessage.decode(self.buffer[:68])
             self.handshake = True
             self.buffer = self.buffer[68:]
             return True
@@ -132,7 +132,7 @@ class Peer:
 
     def handle_continue_connection(self) -> bool:
         if len(self.buffer) >= 4 and unpack('!I', self.buffer[0:4])[0] == 0:
-            continue_connection_message = Message.ContinueConnectionMessage.decode(self.buffer)
+            continue_connection_message = Message.ContinueConnectionMessage.decode(self.buffer[:4])
             self.buffer = self.buffer[4:]
             return True
         return False

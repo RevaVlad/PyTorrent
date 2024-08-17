@@ -32,7 +32,7 @@ def messages():
             Message.CancelMessage(5, 1, 3)]
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture()
 def mock_socket_class():
     class MockSocket:
         def __init__(self):
@@ -242,5 +242,26 @@ class TestPeerClass:
         result = list(peer.get_message())
 
         assert type(result[0]) is type(message)
+        assert peer.buffer == b''
+
+    def test_get_message_with_many_messages(self, peer, messages):
+        peer.is_active = True
+        peer.handshake = True
+        for message in messages:
+            peer.buffer += message.encode()
+
+        result = list(peer.get_message())
+        assert len(result) == len(messages)
+        for i in range(0, len(result)):
+            assert type(result[i]) is type(messages[i])
+        assert peer.buffer == b''
+
+    def test_get_message_with_handshake_and_continue(self, peer, info_hash):
+        peer.is_active = True
+        peer.buffer = Message.HandshakeMessage(info_hash).encode()
+        peer.buffer = Message.ContinueConnectionMessage().encode()
+        peer.buffer += Message.InterestedMessage().encode()
+        result = list(peer.get_message())
+        assert type(result[0]) is type(Message.InterestedMessage())
         assert peer.buffer == b''
 
