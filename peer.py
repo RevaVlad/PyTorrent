@@ -100,16 +100,16 @@ class Peer:
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
 
-    def handle_got_piece(self, peer, piece) -> None:
+    def handle_got_piece(self, piece, peer=None) -> None:
         self.bitfield[piece.piece_index] = True
-        pub.sendMessage('updatePartBitfield', peer=peer, piece_index=piece.piece_index)
+        # pub.sendMessage('updatePartBitfield', peer=peer, piece_index=piece.piece_index)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_available_piece(self, peer, message) -> None:
+    def handle_available_piece(self, message, peer=None) -> None:
         self.bitfield |= message.segments
-        pub.sendMessage('updateAllBitfield', peer=peer)
+        # pub.sendMessage('updateAllBitfield', peer=peer)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
@@ -119,8 +119,9 @@ class Peer:
         pub.sendMessage('sendPiece', piece=piece_message)
 
     def handle_request(self, request) -> None:
-        if not self.peer_choked and self.peer_interested:
-            pub.sendMessage('requestPiece', request=request, peer=self)
+        pass
+        # if not self.peer_choked and self.peer_interested:
+            # pub.sendMessage('requestPiece', request=request, peer=self)
 
     def handle_handshake(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:

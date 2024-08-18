@@ -20,9 +20,9 @@ class PeerManager:
         self.pending_blocks = []
         self.missing_blocks = asyncio.Queue()
 
-        pub.subscribe(self.request_piece, 'requestAllPiece')
-        pub.subscribe(self.peers_bitfield_update_all, 'updateAllBitfield')
-        pub.subscribe(self.peers_bitfield_update_piece, 'updatePartBitfield')
+        # pub.subscribe(self.request_piece, 'requestAllPiece')
+        # pub.subscribe(self.peers_bitfield_update_all, 'updateAllBitfield')
+        # pub.subscribe(self.peers_bitfield_update_piece, 'updatePartBitfield')
 
     async def download_segment(self, segment_id):
         if self._working_segment == -1:
@@ -127,9 +127,9 @@ class PeerManager:
             case Message.NotInterestedMessage():
                 peer.peer_interested = False
             case Message.HaveMessage():
-                peer.handle_got_piece(peer_sent, new_message)
+                peer.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
-                peer.handle_available_piece(peer_sent, new_message)
+                peer.handle_available_piece(new_message)
             case Message.RequestsMessage():
                 peer.handle_request(new_message)
             case Message.SendPieceMessage():
