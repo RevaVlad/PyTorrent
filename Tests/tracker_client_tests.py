@@ -69,7 +69,7 @@ def bad_tracker():
 
 @pytest.fixture
 def good_tracker():
-    return
+    return 'https://ipv6.academictorrents.com/announce.php'
 
 
 class TestTrackerClient:
@@ -110,4 +110,4 @@ class TestTrackerClient:
         caplog.set_level(logging.INFO)
         client = tracker_client.TrackerClient(good_tracker, info_hash, peer_id, port, segment_info)
         asyncio.run(client.close())
-        assert "'event': 'stopped'" in caplog
+        assert "'event': 'stopped'" in caplog.text
