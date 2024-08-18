@@ -100,15 +100,15 @@ class Peer:
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
 
-    def handle_got_piece(self, peer, piece: int) -> None:
-        # Нет кода для piece, нужно поставить self.avliable_files[piece.index] = True
-        pub.sendMessage('updatePartBitfield', peer=peer, piece=piece)
+    def handle_got_piece(self, peer, piece) -> None:
+        self.bitfield[piece.piece_index] = True
+        pub.sendMessage('updatePartBitfield', peer=peer, piece_index=piece.piece_index)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_available_piece(self, peer) -> None:
-        self.bitfield |= peer.bitfield
+    def handle_available_piece(self, peer, message) -> None:
+        self.bitfield |= message.segments
         pub.sendMessage('updateAllBitfield', peer=peer)
         if self.peer_choked and not self.interested:
             self.send_message_to_peer(Message.InterestedMessage().encode())

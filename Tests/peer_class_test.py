@@ -53,9 +53,9 @@ def mock_pubsub():
         def __init__(self):
             self.data = {}
 
-        def update_part_bitfield(self, peer, piece):
+        def update_part_bitfield(self, peer, piece_index):
             self.data['peer'] = peer
-            self.data['piece_index'] = piece
+            self.data['piece_index'] = piece_index
 
         def update_all_bitfield(self, peer):
             self.data['peer'] = peer
@@ -163,7 +163,7 @@ class TestPeerClass:
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
             # Исправить когда появится класс Piece на какой-то piece вместо 1
-            peer.handle_got_piece(sent_peer, 1)
+            peer.handle_got_piece(sent_peer, Message.HaveMessage(1))
             assert peer.interested is True
             assert Message.InterestedMessage().encode() in mock_socket_class.messages
             assert mock_pubsub.data['peer'].ip == sent_peer.ip and mock_pubsub.data['peer'].number_of_pieces == 2
@@ -176,7 +176,7 @@ class TestPeerClass:
         peer.bitfield = bitstring.BitArray(bin='01')
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
-            peer.handle_available_piece(sent_peer)
+            peer.handle_available_piece(sent_peer, Message.PeerSegmentsMessage(sent_peer.bitfield))
             assert peer.interested is True
             assert Message.InterestedMessage().encode() in mock_socket_class.messages
             assert mock_pubsub.data['peer'].ip == sent_peer.ip and mock_pubsub.data['peer'].number_of_pieces == 2

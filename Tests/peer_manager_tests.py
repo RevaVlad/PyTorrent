@@ -7,6 +7,7 @@ import socket
 import errno
 from peer_manager import PeerManager
 from peer import Peer
+from pubsub import pub
 from math import ceil
 
 
@@ -57,6 +58,27 @@ def mock_segment_class():
             self.block_length = 14
 
     return MockSegment()
+
+
+@pytest.fixture()
+def peer_sent():
+    return Peer('127.0.0.4', 4)
+
+
+@pytest.fixture()
+def mock_pubsub():
+    class MockPubSub:
+        def __init__(self):
+            self.data = {}
+
+        def sub_to_request(self, request, peer):
+            self.data['peer'] = peer
+            self.data['request'] = request
+
+        def sub_to_send(self, piece):
+            self.data['piece'] = piece
+
+    return MockPubSub()
 
 
 class TestPeerManager:
@@ -204,3 +226,95 @@ class TestPeerManager:
                 m.setattr(socket.socket, 'recv', mock_fail_recv)
                 result = PeerManager.read_socket(socket.socket())
                 assert 'Произошла ошибка сокета: EBADF error' in caplog.text
+
+    def test_get_new_message_with_handshake(self, peer_manager, caplog):
+        with caplog.at_level(logging.ERROR):
+            PeerManager.get_new_message(Message.HandshakeMessage(b'\x12\x34\x56\x78\x9A\xBC\xDE\xF0\x12\x34\x56\x78\x9A\xBC\xDE\xF0\x12\x34\x56\x78'), peer_manager.peer)
+            assert 'Обработка Handshake сообщения производится отедльно' in caplog.text
+
+    def test_get_new_message_with_continue_connection(self, peer_manager, caplog):
+        with caplog.at_level(logging.ERROR):
+            PeerManager.get_new_message(Message.ContinueConnectionMessage(), peer_manager.peer)
+            assert 'Обработка ContinueConnection сообщения производится отедльно' in caplog.text
+
+    def test_get_new_message_chocked(self, peer_manager):
+        peer_manager.peer.peer_choked = False
+        PeerManager.get_new_message(Message.ChokedMessage(), peer_manager.peer)
+        assert peer_manager.peer.peer_choked is True
+
+    def test_get_new_message_unchoked(self, peer_manager):
+        PeerManager.get_new_message(Message.UnChokedMessage(), peer_manager.peer)
+        assert peer_manager.peer.peer_choked is False
+
+    def test_get_new_message_not_interested(self, peer_manager):
+        PeerManager.get_new_message(Message.NotInterestedMessage(), peer_manager.peer)
+        assert peer_manager.peer.peer_interested is False
+
+    def test_get_new_message_interested(self, monkeypatch, peer_manager, mock_socket_class):
+        with monkeypatch.context() as m:
+            m.setattr(peer_manager.peer, 'socket', mock_socket_class)
+            PeerManager.get_new_message(Message.InterestedMessage(), peer_manager.peer)
+            assert peer_manager.peer.peer_interested is True
+            assert mock_socket_class.messages[0] == Message.UnChokedMessage().encode()
+
+    def test_get_new_message_have(self, monkeypatch, mock_socket_class, peer_manager, peer_sent):
+        peer_manager.peer.bitfield = bitstring.BitArray(bin='0000')
+        peer_sent.bitfield = bitstring.BitArray(bin='1000')
+        message = Message.HaveMessage(0)
+        with monkeypatch.context() as m:
+            m.setattr(peer_manager.peer, 'socket', mock_socket_class)
+            peer_manager.get_new_message(message, peer_manager.peer, peer_sent)
+            assert peer_manager.peer.bitfield == bitstring.BitArray(bin='1000')
+            assert peer_manager.available_pieces[0][0] == 1
+            assert peer_manager.available_pieces[0][1][0].ip == '127.0.0.4'
+            assert mock_socket_class.messages[0] == Message.InterestedMessage().encode()
+
+    def test_get_new_message_send_available_pieces(self, monkeypatch, mock_socket_class, peer_manager, peer_sent):
+        peer_manager.peer.bitfield = bitstring.BitArray(bin='0100')
+        peer_sent.bitfield = bitstring.BitArray(bin='1000')
+        message = Message.PeerSegmentsMessage(peer_sent.bitfield)
+        with monkeypatch.context() as m:
+            m.setattr(peer_manager.peer, 'socket', mock_socket_class)
+            peer_manager.get_new_message(message, peer_manager.peer, peer_sent)
+            assert peer_manager.peer.bitfield == bitstring.BitArray(bin='1100')
+            assert peer_manager.available_pieces[0][0] == 1
+            assert peer_manager.available_pieces[0][1][0].ip == '127.0.0.4'
+            assert mock_socket_class.messages[0] == Message.InterestedMessage().encode()
+
+    def test_get_new_message_request(self, monkeypatch, peer_manager, mock_socket_class, mock_pubsub):
+        message = Message.RequestsMessage(1, 1, 4)
+        pub.subscribe(mock_pubsub.sub_to_request, 'requestPiece')
+        with monkeypatch.context() as m:
+            m.setattr(peer_manager.peer, 'socket', mock_socket_class)
+            peer_manager.peer.peer_choked = False
+            peer_manager.peer.peer_interested = True
+            assert mock_socket_class.messages[0] == Message.UnChokedMessage().encode()
+            peer_manager.get_new_message(message, peer_manager.peer)
+            assert mock_pubsub.data['peer'].ip == '127.0.0.1'
+            assert mock_pubsub.data['request'].encode() == message.encode()
+
+    def test_get_message_send_piece(self, peer_manager, mock_pubsub):
+        message = Message.SendPieceMessage(1, 1, b'Hi')
+        pub.subscribe(mock_pubsub.sub_to_send, 'sendPiece')
+        peer_manager.get_new_message(message, peer_manager.peer)
+        assert mock_pubsub.data['piece'].encode() == message.encode()
+
+    def test_get_message_cancel(self, peer_manager, caplog):
+        with caplog.at_level(logging.INFO):
+            message = Message.CancelMessage(1, 1, 4)
+            peer_manager.get_new_message(message, peer_manager.peer)
+            assert 'CancelMessage' in caplog.text
+
+    def test_get_message_fail(self, caplog, peer_manager):
+        class IncorrectMessage(Message.Message):
+            def encode(self):
+                pass
+
+            @staticmethod
+            def decode(data):
+                pass
+
+        with caplog.at_level(logging.ERROR):
+            message = IncorrectMessage()
+            peer_manager.get_new_message(message, peer_manager.peer)
+            assert 'Такого типа сообщения нет' in caplog.text

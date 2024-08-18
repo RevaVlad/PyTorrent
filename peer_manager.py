@@ -114,10 +114,12 @@ class PeerManager:
             return data
 
     @staticmethod
-    def get_new_message(new_message: Message.Message, peer: peer_class):
+    def get_new_message(new_message: Message.Message, peer: peer_class, peer_sent=None):
         match new_message:
-            case Message.HandshakeMessage() | Message.ContinueConnectionMessage:
-                logging.error(f'Обработка {new_message} производится отедльно')
+            case Message.HandshakeMessage():
+                logging.error(f'Обработка Handshake сообщения производится отедльно')
+            case Message.ContinueConnectionMessage():
+                logging.error(f'Обработка ContinueConnection сообщения производится отедльно')
             case Message.ChokedMessage():
                 peer.peer_choked = True
             case Message.UnChokedMessage():
@@ -127,14 +129,14 @@ class PeerManager:
             case Message.NotInterestedMessage():
                 peer.peer_interested = False
             case Message.HaveMessage():
-                peer.handle_got_piece(new_message)
+                peer.handle_got_piece(peer_sent, new_message)
             case Message.PeerSegmentsMessage():
-                peer.handle_available_piece(new_message, peer)
+                peer.handle_available_piece(peer_sent, new_message)
             case Message.RequestsMessage():
                 peer.handle_request(new_message)
             case Message.SendPieceMessage():
                 peer.handle_send_piece(new_message)
             case Message.CancelMessage():
-                pass
+                logging.info('CancelMessage')
             case _:
-                logging.error('Такого типа сообщения нет')
+                logging.error(f'Такого типа сообщения нет: {type(new_message)}')
