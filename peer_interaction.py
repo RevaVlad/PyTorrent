@@ -45,11 +45,13 @@ class PeerInteraction(Thread):
     def run(self):
         while self.is_active:
             sockets = [peer.socket for peer in self.peers]
-            list_for_read = select.select(sockets, [], [], 1)
+            if not sockets:
+                continue
+            list_for_read, _, _ = select.select(sockets, [], [], 1)
 
             for sock in list_for_read:
                 peer = self.get_peer_from_socket(sock)
-                if peer.is_active is False:
+                if peer is not None and peer.is_active is False:
                     self.remove_peer(peer)
                     continue
 

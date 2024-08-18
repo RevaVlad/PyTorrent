@@ -54,7 +54,7 @@ class Peer:
             return False
         return True
 
-    def send_message_to_peer(self, message: str) -> None:
+    def send_message_to_peer(self, message: bytes) -> None:
         try:
             self.socket.send(message)
         except socket.error:
@@ -108,6 +108,9 @@ class Peer:
             self.interested = True
 
     def handle_available_piece(self, message, peer=None) -> None:
+        # logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
+        # logging.info(f"Message.segments - {len(message.segments)}")
+
         self.bitfield |= message.segments
         # pub.sendMessage('updateAllBitfield', peer=peer)
         if self.peer_choked and not self.interested:

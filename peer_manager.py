@@ -121,18 +121,25 @@ class PeerManager:
             case Message.ChokedMessage():
                 peer.peer_choked = True
             case Message.UnChokedMessage():
+                logging.info('unchocked')
                 peer.peer_choked = False
             case Message.InterestedMessage():
+                logging.info('interested')
                 peer.peer_interested = True
             case Message.NotInterestedMessage():
+                logging.info('not interested')
                 peer.peer_interested = False
             case Message.HaveMessage():
+                logging.info('have massage')
                 peer.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
+                logging.info('peer segments message')
                 peer.handle_available_piece(new_message)
             case Message.RequestsMessage():
+                logging.info('request message')
                 peer.handle_request(new_message)
             case Message.SendPieceMessage():
+                logging.info('send piece message')
                 peer.handle_send_piece(new_message)
             case Message.CancelMessage():
                 logging.info('CancelMessage')
