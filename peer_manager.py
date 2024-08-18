@@ -11,9 +11,8 @@ from math import ceil
 
 class PeerManager:
 
-    def __init__(self, peer, torrent_data):
+    def __init__(self, torrent_data):
         self.torrent_data = torrent_data
-        self.peer = peer
         self._working_segment = -1
 
         self.available_pieces = [[0, []] for _ in range(self.torrent_data.total_segments)]
@@ -24,12 +23,6 @@ class PeerManager:
         pub.subscribe(self.request_piece, 'requestAllPiece')
         pub.subscribe(self.peers_bitfield_update_all, 'updateAllBitfield')
         pub.subscribe(self.peers_bitfield_update_piece, 'updatePartBitfield')
-
-    def close(self):
-        self.peer.close()
-
-    def check_available_segments(self):
-        return self.peer.bitfield
 
     async def download_segment(self, segment_id):
         if self._working_segment == -1:
@@ -90,9 +83,14 @@ class PeerManager:
     def peer_handshake(self, peer=None):
         if peer is None:
             logging.error('Не указан пир, которому нужно отправить handshake')
+            return False
         else:
             handshake = Message.HandshakeMessage(self.torrent_data.info_hash)
             peer.send_message_to_peer(handshake.encode())
+            if peer.is_active is False:
+                logging.error('Произошла ошибка при handshake-e, проверьте лог')
+                return False
+            return True
 
     @staticmethod
     def read_socket(socket_read):
