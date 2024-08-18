@@ -59,3 +59,9 @@ class PeerInteraction(Thread):
                 for message in peer.get_message():
                     self.peer_manager.get_new_message(message, peer)
 
+    def unchoked_peers(self):
+        for peer in self.peers:
+            if peer.peer_choked is False:
+                return True
+        return False
+
