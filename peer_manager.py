@@ -7,6 +7,7 @@ from pubsub import pub
 import peer as peer_class
 from block import Block
 from math import ceil
+from struct import unpack
 
 
 class PeerManager:
@@ -80,39 +81,50 @@ class PeerManager:
                 self.available_pieces[piece_index][1].append(peer)
                 self.available_pieces[piece_index][0] = len(self.available_pieces[piece_index][1])
 
-    def peer_handshake(self, peer=None):
+    async def peer_handshake(self, peer=None):
         if peer is None:
             logging.error('Не указан пир, которому нужно отправить handshake')
             return False
         else:
             handshake = Message.HandshakeMessage(self.torrent_data.info_hash)
-            peer.send_message_to_peer(handshake.encode())
+            await peer.send_message_to_peer(handshake.encode())
             if peer.is_active is False:
                 logging.error('Произошла ошибка при handshake-e, проверьте лог')
                 return False
             return True
 
     @staticmethod
-    def read_socket(socket_read):
-        while True:
-            data = b''
-            while True:
-                try:
-                    buff = socket_read.recv(4096)
-                    if len(buff) <= 0:
-                        break
-                    data += buff
-                except socket.error as exception:
-                    err = exception.args[0]
-                    # Две эти ошибки отвечают за то, что нужно попробовать сделать запрос позже.
-                    if err != errno.EAGAIN and err != errno.EWOULDBLOCK:
-                        logging.error(f"Произошла ошибка сокета: {exception.args[1]}")
-                    break
-
-            return data
+    async def read_socket(peer: peer_class):
+        try:
+            data = await peer.reader.read(4096)
+            peer.buffer += data
+        except (asyncio.TimeoutError, OSError):
+            logging.error('Таймаут чтения с сокета')
 
     @staticmethod
-    def get_new_message(new_message: Message.Message, peer: peer_class, peer_sent=None):
+    async def run(peer: peer_class):
+        while peer.is_active:
+            await PeerManager.read_socket(peer)
+
+            while len(peer.buffer) > 4 and peer.is_active:
+                if (not peer.handshake and peer.handle_handshake()) or peer.handle_continue_connection():
+                    continue
+
+                message_length, = unpack("!I", peer.buffer[:4])
+                total_length = message_length + 4
+
+                if len(peer.buffer) < total_length:
+                    break
+                else:
+                    message = peer.buffer[:total_length]
+                    peer.buffer = peer.buffer[total_length:]
+
+                received_message = peer.analyze_message(message)
+                if received_message:
+                    await PeerManager.get_new_message(received_message, peer)
+
+    @staticmethod
+    async def get_new_message(new_message: Message.Message, peer: peer_class, peer_sent=None):
         match new_message:
             case Message.HandshakeMessage():
                 logging.error(f'Обработка Handshake сообщения производится отедльно')
@@ -131,16 +143,16 @@ class PeerManager:
                 peer.peer_interested = False
             case Message.HaveMessage():
                 logging.info('have massage')
-                peer.handle_got_piece(new_message)
+                await peer.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
                 logging.info('peer segments message')
-                peer.handle_available_piece(new_message)
+                await peer.handle_available_piece(new_message)
             case Message.RequestsMessage():
                 logging.info('request message')
-                peer.handle_request(new_message)
+                await peer.handle_request(new_message)
             case Message.SendPieceMessage():
                 logging.info('send piece message')
-                peer.handle_send_piece(new_message)
+                await peer.handle_send_piece(new_message)
             case Message.CancelMessage():
                 logging.info('CancelMessage')
             case _:

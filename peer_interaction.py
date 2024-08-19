@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import select
 import socket
@@ -13,53 +14,20 @@ class PeerInteraction(Thread):
         self.is_active = True
         self.peer_manager = PeerManager(self.torrent)
 
-    def add_peer(self, peers):
+    async def add_peer(self, peers):
         for peer in peers:
-            if self.peer_manager.peer_handshake(peer):
-                self.peers.append(peer)
+            connect = await peer.connect()
+            if connect:
+                if await self.peer_manager.peer_handshake(peer):
+                    self.peers.append(peer)
+                    asyncio.create_task(self.peer_manager.run(peer))
             else:
-                print('Возникли проблемы с установлением соединения с пиром')
+                logging.error('Возникли проблемы с установлением соединения с пиром')
 
     def remove_peer(self, peer):
         if peer in self.peers:
-            try:
-                peer.socket.close()
-            except socket.error:
-                logging.exception('Произошла проблема с закрытием соединения')
-
-        self.peers.remove(peer)
-
-        for i in range(len(self.peer_manager.available_pieces)):
-            if peer in self.peer_manager.available_pieces[i][1]:
-                self.peer_manager.available_pieces[i][1].remove(peer)
-                self.peer_manager.available_pieces[i][0] -= 1
-
-    def get_peer_from_socket(self, sock):
-        for peer in self.peers:
-            if peer.socket == sock:
-                return peer
-
-        logging.error('Пира с таким сокетом нет')
-        return None
-
-    def run(self):
-        while self.is_active:
-            sockets = [peer.socket for peer in self.peers]
-            if not sockets:
-                continue
-            list_for_read, _, _ = select.select(sockets, [], [], 1)
-
-            for sock in list_for_read:
-                peer = self.get_peer_from_socket(sock)
-                if peer is not None and peer.is_active is False:
-                    self.remove_peer(peer)
-                    continue
-
-                read_data = self.peer_manager.read_socket(sock)
-                peer.buffer += read_data
-
-                for message in peer.get_message():
-                    self.peer_manager.get_new_message(message, peer)
+            peer.close()
+            self.peers.remove(peer)
 
     def unchoked_peers(self):
         for peer in self.peers:

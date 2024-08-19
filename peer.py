@@ -4,6 +4,7 @@ import bitstring
 import socket
 import logging
 import Message
+import asyncio
 from pubsub import pub
 from struct import unpack
 
@@ -17,7 +18,8 @@ class Peer:
         self.bitfield = bitstring.BitArray(bitfield_length)
         self.handshake = False
         self.is_active = False
-        self.socket = None
+        self.reader = None
+        self.writer = None
         self.buffer = b''
 
         self._peer_interested = False
@@ -46,20 +48,20 @@ class Peer:
         else:
             return messages_by_id[message_id].decode(message)
 
-    def connect(self) -> bool:
+    async def connect(self) -> bool:
         try:
-            self.socket = socket.create_connection((self.ip, self.port))
-            self.socket.setblocking(False)
+            self.reader, self.writer = await asyncio.open_connection(self.ip, self.port)
             self.is_active = True
-        except socket.error:
+        except (asyncio.TimeoutError, OSError):
             logging.error(f'Socket error: Пир {self.ip}:{self.port} не может быть подключён')
             return False
         return True
 
-    def send_message_to_peer(self, message: bytes) -> None:
+    async def send_message_to_peer(self, message: bytes) -> None:
         try:
-            self.socket.send(message)
-        except socket.error:
+            self.writer.write(message)
+            await self.writer.drain()
+        except OSError:
             self.is_active = False
             logging.error(f'Socket error. Невозможно отправить сообщение {message}')
 
@@ -88,7 +90,8 @@ class Peer:
     def peer_interested(self, value: bool) -> None:
         self._peer_interested = value
         if value and self.choked:
-            self.send_message_to_peer(Message.UnChokedMessage().encode())
+            logging.info('Send intereted message!')
+            asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage().encode()))
 
     @property
     def peer_choked(self) -> bool:
@@ -102,21 +105,21 @@ class Peer:
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
 
-    def handle_got_piece(self, piece, peer=None) -> None:
+    async def handle_got_piece(self, piece, peer=None) -> None:
         self.bitfield[piece.piece_index] = True
         # pub.sendMessage('updatePartBitfield', peer=peer, piece_index=piece.piece_index)
         if self.peer_choked and not self.interested:
-            self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_available_piece(self, message, peer=None) -> None:
+    async def handle_available_piece(self, message, peer=None) -> None:
         logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
         logging.info(f"Message.segments - {len(message.segments)}")
 
         self.bitfield |= message.segments
         # pub.sendMessage('updateAllBitfield', peer=peer)
         if self.peer_choked and not self.interested:
-            self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
     def handle_send_piece(self, piece_message) -> None:
@@ -143,24 +146,11 @@ class Peer:
             return True
         return False
 
-    def get_message(self):
-        while len(self.buffer) > 4 and self.is_active:
-            if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection():
-                continue
-
-            message_length, = unpack("!I", self.buffer[:4])
-            total_length = message_length + 4
-
-            if len(self.buffer) < total_length:
-                break
-            else:
-                message = self.buffer[:total_length]
-                self.buffer = self.buffer[total_length:]
-
-            received_message = self.analyze_message(message)
-            if received_message:
-                yield received_message
-
-    def close(self):
-        # self.close_connection()
-        pass
+    async def close(self):
+        self.is_active = False
+        if self.writer:
+            self.writer.close()
+            await self.writer.wait_closed()
+        if self.reader:
+            self.reader = None
+        self.is_active = False
