@@ -28,6 +28,7 @@ class Peer:
     def analyze_message(message):
         try:
             message_length, message_id = unpack('!IB', message[:5])
+            logging.info(f"Message id - {message_id}")
         except struct.error:
             logging.error('Некорректное сообщение, распаковка невозможна')
             return None
@@ -108,8 +109,8 @@ class Peer:
             self.interested = True
 
     def handle_available_piece(self, message, peer=None) -> None:
-        # logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
-        # logging.info(f"Message.segments - {len(message.segments)}")
+        logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
+        logging.info(f"Message.segments - {len(message.segments)}")
 
         self.bitfield |= message.segments
         # pub.sendMessage('updateAllBitfield', peer=peer)

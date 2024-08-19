@@ -15,6 +15,7 @@ from peer_manager import PeerManager
 async def download_from_torrent_file(filename):
     torrent_file = TorrentData(filename)
     torrent_statistics = TorrentStatistics(torrent_file.total_length)
+    logging.info(f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
     pi = PeerInteraction(torrent_file)
     pi.start()
@@ -31,13 +32,19 @@ async def download_from_torrent_file(filename):
                 if new_peer.connect():
                     logging.info(f"New peer - {(new_peer.ip, new_peer.port)}")
                     pi.add_peer([new_peer])
-                    break
+
+                    f = False
+                    for _ in range(200):
+                        time.sleep(.01)
+                        if any(new_peer.bitfield):
+                            f = True
+                            break
+                    if f:
+                        break
+
             await asyncio.sleep(.01)
 
-        while not any(new_peer.bitfield):
-            time.sleep(.01)
-
-        new_peer.send_message_to_peer(RequestsMessage(0, 0, 16384).encode())
+        new_peer.send_message_to_peer(RequestsMessage(0, 0, 7100).encode())
         logging.info("Send request")
 
         while True:
@@ -46,4 +53,4 @@ async def download_from_torrent_file(filename):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(download_from_torrent_file("test.torrent"))
+    asyncio.run(download_from_torrent_file("torrent_files/very_small.torrent"))

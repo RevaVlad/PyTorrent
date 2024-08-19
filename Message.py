@@ -83,7 +83,8 @@ class PeerSegmentsMessage(Message):
     @staticmethod
     def decode(message):
         message_length, message_id = unpack('!IB', message[:5])
-        segments, = unpack(f'!{message_length - 1}s', message[5:])
+        segments, = unpack(f'!{message_length - 1}s', message[5:5 + message_length - 1])
+        logging.info(f"{message_length}, {message_id}, {bitstring.BitArray(bytes=bytes(segments)).length}, {segments}")
         return PeerSegmentsMessage(bitstring.BitArray(bytes=bytes(segments)))
 
 

@@ -21,7 +21,7 @@ class TorrentData:
 
         self.total_length = sum(file_info['length'] for file_info in self.files)
         # logging.info(f"Total length: {self.total_length}, in MB: {self.total_length / 2**20}. Piece length: {self.segment_length}")
-        self.total_segments = ceil(self.total_length / self.segment_length) + 3
+        self.total_segments = ceil(self.total_length / self.segment_length)
         # logging.info(f'Total segments: {self.total_segments}')
 
     def _get_announce_list(self, data):
