@@ -13,7 +13,8 @@ class Peer:
         self.ip = ip
         self.port = port
         self.number_of_pieces = number_of_pieces
-        self.bitfield = bitstring.BitArray(number_of_pieces)
+        bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
+        self.bitfield = bitstring.BitArray(bitfield_length)
         self.handshake = False
         self.is_active = False
         self.socket = None

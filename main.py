@@ -53,4 +53,4 @@ async def download_from_torrent_file(filename):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(download_from_torrent_file("torrent_files/very_small.torrent"))
+    asyncio.run(download_from_torrent_file("torrent_files/test.torrent"))
