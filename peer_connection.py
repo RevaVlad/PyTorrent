@@ -14,10 +14,11 @@ class PeerConnection:
     RECEIVE_BLOCK_EVENT = 'sendPiece'         # + ip, args: request, peer
     BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip, args: peer
 
-    def __init__(self, ip, number_of_pieces: int, port=6881):
+    def __init__(self, ip, number_of_pieces: int, info_hash, port=6881):
         self.ip = ip
         self.port = port
         self.number_of_pieces = number_of_pieces
+        self.info_hash = info_hash
 
         self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
         self.request_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
@@ -121,6 +122,14 @@ class PeerConnection:
         if self.peer_choked and not self.interested:
             await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
+
+    async def handle_handshake(self):
+        handshake = Message.HandshakeMessage(self.info_hash)
+        await self.send_message_to_peer(handshake.encode())
+        if self.is_active is False:
+            logging.error('Произошла ошибка при handshake-e, пир неактивен')
+            return False
+        return True
 
     async def handle_available_piece(self, message) -> None:
         logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")

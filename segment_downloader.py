@@ -112,18 +112,6 @@ class SegmentDownloader:
         block.data = message.data
         self.downloaded_blocks.add(block)
 
-    async def peer_handshake(self, peer=None):
-        if peer is None:
-            logging.error('Не указан пир, которому нужно отправить handshake')
-            return False
-        else:
-            handshake = Message.HandshakeMessage(self.torrent_data.info_hash)
-            await peer.send_message_to_peer(handshake.encode())
-            if peer.is_active is False:
-                logging.error('Произошла ошибка при handshake-e, проверьте лог')
-                return False
-            return True
-
     def assemble_segment(self) -> bytes:
         return b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
 
