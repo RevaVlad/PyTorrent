@@ -18,7 +18,6 @@ async def download_from_torrent_file(filename):
     logging.info(f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
     pi = PeerInteraction(torrent_file)
-    pi.start()
 
     async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
         logging.info(f"Started tracker manager, active trackers: {', '.join([tracker.url for tracker in trackers_manager.tracker_clients])}")

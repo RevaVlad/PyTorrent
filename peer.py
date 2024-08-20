@@ -122,10 +122,12 @@ class Peer:
             await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
+    # Метод на получение куска
     def handle_send_piece(self, piece_message) -> None:
         # Переделать когда появится piece на отправку с piece=(index, byte_offset, data)
         pub.sendMessage('sendPiece', piece=piece_message)
 
+    # Метод на отправку куска
     def handle_request(self, request) -> None:
         pass
         # if not self.peer_choked and self.peer_interested:
@@ -153,4 +155,3 @@ class Peer:
             await self.writer.wait_closed()
         if self.reader:
             self.reader = None
-        self.is_active = False
