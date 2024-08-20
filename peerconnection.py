@@ -9,13 +9,24 @@ from pubsub import pub
 from struct import unpack
 
 
-class Peer:
-    def __init__(self, ip, number_of_pieces,  port=6881):
+class PeerConnection:
+
+    REQUEST_PIECE_EVENT = 'requestPiece'
+    RECEIVE_BLOCK_EVENT = 'sendPiece'
+    BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'
+
+    def __init__(self, ip, number_of_pieces: int, port=6881):
         self.ip = ip
         self.port = port
         self.number_of_pieces = number_of_pieces
+
+        self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
+        self.request_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
+        self.bitfield_update_event = PeerConnection.BITFIELD_UPDATE_EVENT + ip
+
         bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
         self.bitfield = bitstring.BitArray(bitfield_length)
+
         self.handshake = False
         self.is_active = False
         self.reader = None
@@ -105,31 +116,29 @@ class Peer:
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
 
-    async def handle_got_piece(self, piece, peer=None) -> None:
-        self.bitfield[piece.piece_index] = True
-        # pub.sendMessage('updatePartBitfield', peer=peer, piece_index=piece.piece_index)
+    async def handle_got_piece(self, message) -> None:
+        self.bitfield[message.piece_index] = True
         if self.peer_choked and not self.interested:
             await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    async def handle_available_piece(self, message, peer=None) -> None:
+    async def handle_available_piece(self, message) -> None:
         logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
         logging.info(f"Message.segments - {len(message.segments)}")
 
         self.bitfield |= message.segments
-        # pub.sendMessage('updateAllBitfield', peer=peer)
+        pub.sendMessage(self.bitfield_update_event, peer=self)
         if self.peer_choked and not self.interested:
             await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-    def handle_send_piece(self, piece_message) -> None:
+    def handle_piece_receive(self, piece_message) -> None:
         # Переделать когда появится piece на отправку с piece=(index, byte_offset, data)
-        pub.sendMessage('sendPiece', piece=piece_message)
+        pub.sendMessage(self.receive_event, piece=piece_message)
 
-    def handle_request(self, request) -> None:
-        pass
-        # if not self.peer_choked and self.peer_interested:
-            # pub.sendMessage('requestPiece', request=request, peer=self)
+    def handle_piece_request(self, request) -> None:
+        if not self.peer_choked and self.peer_interested:
+            pub.sendMessage(self.request_event, request=request, peer=self)
 
     def handle_handshake(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
@@ -145,6 +154,68 @@ class Peer:
             self.buffer = self.buffer[4:]
             return True
         return False
+
+    async def read_socket(self):
+        try:
+            data = await self.reader.read(4096)
+            self.buffer += data
+        except (asyncio.TimeoutError, OSError):
+            logging.error('Таймаут чтения с сокета')
+
+    async def run(self):
+        while self.is_active:
+            await self.read_socket()
+
+            while len(self.buffer) > 4 and self.is_active:
+                if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection():
+                    continue
+
+                message_length, = unpack("!I", self.buffer[:4])
+                total_length = message_length + 4
+
+                if len(self.buffer) < total_length:
+                    break
+                else:
+                    message = self.buffer[:total_length]
+                    self.buffer = self.buffer[total_length:]
+
+                received_message = self.analyze_message(message)
+                if received_message:
+                    await self.handle_message(received_message)
+
+    async def handle_message(self, new_message):
+        match new_message:
+            case Message.HandshakeMessage():
+                logging.error(f'Обработка Handshake сообщения производится отедльно')
+            case Message.ContinueConnectionMessage():
+                logging.error(f'Обработка ContinueConnection сообщения производится отедльно')
+            case Message.ChokedMessage():
+                self.peer_choked = True
+            case Message.UnChokedMessage():
+                logging.info('unchocked')
+                self.peer_choked = False
+            case Message.InterestedMessage():
+                logging.info('interested')
+                self.peer_interested = True
+            case Message.NotInterestedMessage():
+                logging.info('not interested')
+                self.peer_interested = False
+            case Message.HaveMessage():
+                logging.info('have massage')
+                await self.handle_got_piece(new_message)
+            case Message.PeerSegmentsMessage():
+                logging.info('peer segments message')
+                await self.handle_available_piece(new_message)
+            case Message.RequestsMessage():
+                logging.info('request message')
+                self.handle_piece_request(new_message)
+            case Message.SendPieceMessage():
+                logging.info('send piece message')
+                self.handle_piece_receive(new_message)
+            case Message.CancelMessage():
+                logging.info('CancelMessage')
+            case _:
+                logging.error(f'Такого типа сообщения нет: {type(new_message)}')
 
     async def close(self):
         self.is_active = False

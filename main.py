@@ -6,10 +6,10 @@ from parser import TorrentData
 from torrent_statistics import TorrentStatistics
 from tracker_manager import TrackerManager
 from peer_interaction import PeerInteraction
-from peer import Peer
+from peerconnection import PeerConnection
 from Message import RequestsMessage
 from file_writer import FileWriter
-from peer_manager import PeerManager
+from segment_downloader import SegmentDownloader
 
 
 async def download_from_torrent_file(filename):
@@ -28,7 +28,7 @@ async def download_from_torrent_file(filename):
         while True:
             if not trackers_manager.available_peers.empty():
                 new_peer = trackers_manager.available_peers.get_nowait()
-                new_peer = Peer(ip=new_peer[0], port=new_peer[1], number_of_pieces=torrent_file.total_segments)
+                new_peer = PeerConnection(ip=new_peer[0], port=new_peer[1], number_of_pieces=torrent_file.total_segments)
                 await pi.add_peer([new_peer])
                 logging.info(f"New peer - {(new_peer.ip, new_peer.port)}")
 
