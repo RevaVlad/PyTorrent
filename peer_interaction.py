@@ -1,14 +1,10 @@
 import asyncio
 import logging
-import select
-import socket
-from threading import Thread
 from peer_manager import PeerManager
 
 
-class PeerInteraction(Thread):
+class PeerInteraction:
     def __init__(self, torrent):
-        super().__init__()
         self.peers = []
         self.torrent = torrent
         self.is_active = True
