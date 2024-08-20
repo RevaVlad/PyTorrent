@@ -6,7 +6,7 @@ from parser import TorrentData
 from torrent_statistics import TorrentStatistics
 from tracker_manager import TrackerManager
 from peer_interaction import PeerInteraction
-from peerconnection import PeerConnection
+from peer_connection import PeerConnection
 from Message import RequestsMessage
 from file_writer import FileWriter
 from segment_downloader import SegmentDownloader

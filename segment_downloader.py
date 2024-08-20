@@ -5,7 +5,7 @@ import parser
 import math
 import hashlib
 from pubsub import pub
-from peerconnection import PeerConnection
+from peer_connection import PeerConnection
 from block import Block
 
 
