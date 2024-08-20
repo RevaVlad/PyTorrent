@@ -5,8 +5,8 @@ import logging
 import Message
 import socket
 import errno
-from peer_manager import PeerManager
-from peer import Peer
+from segment_downloader import SegmentDownloader
+from peerconnection import PeerConnection
 from pubsub import pub
 from math import ceil
 
@@ -20,9 +20,9 @@ def peer_manager():
             self.total_length = total_length
             self.total_segments = ceil(total_length / segment_length)
 
-    peer = Peer('127.0.0.1', 4)
+    peer = PeerConnection('127.0.0.1', 4)
 
-    return PeerManager(TorrentData(1, 4))
+    return SegmentDownloader(TorrentData(1, 4))
 
 
 @pytest.fixture()
@@ -62,13 +62,13 @@ def mock_segment_class():
 
 @pytest.fixture()
 def peer():
-    return Peer('127.0.0.1', 4)
+    return PeerConnection('127.0.0.1', 4)
 
 
 
 @pytest.fixture()
 def peer_sent():
-    return Peer('127.0.0.4', 4)
+    return PeerConnection('127.0.0.4', 4)
 
 
 @pytest.fixture()
@@ -90,19 +90,19 @@ def mock_pubsub():
 class TestPeerManager:
     def test_request_piece_fail_request(self, caplog, peer_manager):
         with caplog.at_level(logging.ERROR):
-            peer_manager.request_piece()
+            peer_manager.on_request_piece()
             assert 'Тело запроса пусто' in caplog.text
 
     def test_request_piece_fail_peer(self, caplog, peer_manager):
         with caplog.at_level(logging.ERROR):
-            peer_manager.request_piece((1, 1, 2))
+            peer_manager.on_request_piece((1, 1, 2))
             assert 'Не указан пир, запросивший сегмент' in caplog.text
 
     def test_request_piece_succeed(self, monkeypatch, peer_manager, mock_socket_class, mock_segment_class):
-        peer = Peer('127.0.0.2', 4)
+        peer = PeerConnection('127.0.0.2', 4)
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
-            peer_manager.request_piece(mock_segment_class, peer)
+            peer_manager.on_request_piece(mock_segment_class, peer)
             assert mock_socket_class.messages[0] == Message.SendPieceMessage(1, 1, b'need to update').encode()
 
     def test_update_all_bitfield_fail(self, peer_manager, caplog):
@@ -111,7 +111,7 @@ class TestPeerManager:
             assert 'Не указан пир, у которого необходимо проверить наличие сегментов' in caplog.text
 
     def test_update_all_bitfield_succeed(self, peer_manager):
-        peer = Peer('127.0.0.2', 4)
+        peer = PeerConnection('127.0.0.2', 4)
         peer.bitfield = bitstring.BitArray(bin='1010')
         peer_manager.peers_bitfield_update_all(peer)
         for i in range(4):
@@ -120,7 +120,7 @@ class TestPeerManager:
                 assert peer_manager.available_pieces[i][1][0].ip == '127.0.0.2'
 
     def test_update_all_bitfield_multiple_one_peer(self, peer_manager):
-        peer = Peer('127.0.0.2', 5)
+        peer = PeerConnection('127.0.0.2', 5)
         peer.bitfield = bitstring.BitArray(bin='1111')
         peer_manager.peers_bitfield_update_all(peer)
         peer_manager.peers_bitfield_update_all(peer)
@@ -129,10 +129,10 @@ class TestPeerManager:
             assert peer_manager.available_pieces[i][1][0].ip == '127.0.0.2'
 
     def test_update_all_bitfield_multiple(self, peer_manager):
-        first_peer = Peer('127.0.0.2', 4)
+        first_peer = PeerConnection('127.0.0.2', 4)
         first_peer.bitfield = bitstring.BitArray(bin='1100')
         peer_manager.peers_bitfield_update_all(first_peer)
-        second_peer = Peer('127.0.0.3', 4)
+        second_peer = PeerConnection('127.0.0.3', 4)
         second_peer.bitfield = bitstring.BitArray(bin='0110')
         peer_manager.peers_bitfield_update_all(second_peer)
         assert peer_manager.available_pieces[0][0] == 1 and peer_manager.available_pieces[0][1][0].ip == '127.0.0.2'
@@ -148,13 +148,13 @@ class TestPeerManager:
             assert 'Не указан пир, у которого есть сегмент'
 
     def test_update_part_bitfield_fail_piece(self, peer_manager, caplog):
-        peer = Peer('127.0.0.2', 4)
+        peer = PeerConnection('127.0.0.2', 4)
         with caplog.at_level(logging.ERROR):
             peer_manager.peers_bitfield_update_piece(peer)
             assert 'Не указан индекс для отметки в bitField'
 
     def test_update_part_bitfield(self, peer_manager):
-        peer = Peer('127.0.0.2', 4)
+        peer = PeerConnection('127.0.0.2', 4)
         peer.bitfield = bitstring.BitArray(bin='0000')
         peer_manager.peers_bitfield_update_all(peer)
         peer.bitfield[0] = True
@@ -163,10 +163,10 @@ class TestPeerManager:
         assert peer_manager.available_pieces[0][1][0].ip == '127.0.0.2'
 
     def test_update_part_bitfield_multiple(self, peer_manager):
-        first_peer = Peer('127.0.0.2', 4)
+        first_peer = PeerConnection('127.0.0.2', 4)
         first_peer.bitfield = bitstring.BitArray(bin='1000')
         peer_manager.peers_bitfield_update_all(first_peer)
-        second_peer = Peer('127.0.0.3', 4)
+        second_peer = PeerConnection('127.0.0.3', 4)
         second_peer.bitfield = bitstring.BitArray(bin='1100')
         peer_manager.peers_bitfield_update_piece(second_peer, 0)
         peer_manager.peers_bitfield_update_piece(second_peer, 1)
@@ -196,7 +196,7 @@ class TestPeerManager:
                 assert 'Произошла ошибка при handshake-e, проверьте лог' in caplog.text
 
     def test_peer_handshake_succeed(self, monkeypatch, peer_manager, mock_socket_class):
-        peer = Peer('127.0.0.2', 4)
+        peer = PeerConnection('127.0.0.2', 4)
         peer.is_active = True
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
@@ -209,14 +209,14 @@ class TestPeerManager:
         with monkeypatch.context() as m:
             mock_socket_class._set_recv_sequence([b'Hi', b'Bye', b''])
             m.setattr(socket.socket, 'recv', mock_socket_class.recv)
-            result = PeerManager.read_socket(socket.socket())
+            result = SegmentDownloader.read_socket(socket.socket())
             assert result == b'HiBye'
 
     def test_read_socket_with_empty(self, monkeypatch, mock_socket_class):
         with monkeypatch.context() as m:
             mock_socket_class._set_recv_sequence([b''])
             m.setattr(socket.socket, 'recv', mock_socket_class.recv)
-            result = PeerManager.read_socket(socket.socket())
+            result = SegmentDownloader.read_socket(socket.socket())
             assert result == b''
 
     def test_read_socket_fail_with_correct_errors(self, monkeypatch, caplog):
@@ -229,13 +229,13 @@ class TestPeerManager:
         with caplog.at_level(logging.ERROR):
             with monkeypatch.context() as m:
                 m.setattr(socket.socket, 'recv', mock_fail_recv_eagain)
-                result = PeerManager.read_socket(socket.socket())
+                result = SegmentDownloader.read_socket(socket.socket())
                 assert 'Произошла ошибка сокета' not in caplog.text
                 assert result == b''
 
             with monkeypatch.context() as m:
                 m.setattr(socket.socket, 'recv', mock_fail_recv_ewouldblock)
-                result = PeerManager.read_socket(socket.socket())
+                result = SegmentDownloader.read_socket(socket.socket())
                 assert 'Произошла ошибка сокета' not in caplog.text
                 assert result == b''
 
@@ -246,7 +246,7 @@ class TestPeerManager:
         with caplog.at_level(logging.ERROR):
             with monkeypatch.context() as m:
                 m.setattr(socket.socket, 'recv', mock_fail_recv)
-                result = PeerManager.read_socket(socket.socket())
+                result = SegmentDownloader.read_socket(socket.socket())
                 assert 'Произошла ошибка сокета: EBADF error' in caplog.text
 
     def test_get_new_message_with_handshake(self, peer_manager, caplog, peer):
@@ -275,7 +275,7 @@ class TestPeerManager:
     def test_get_new_message_interested(self, monkeypatch, peer_manager, mock_socket_class, peer):
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
-            PeerManager.get_new_message(Message.InterestedMessage(), peer)
+            SegmentDownloader.get_new_message(Message.InterestedMessage(), peer)
             assert peer.peer_interested is True
             assert mock_socket_class.messages[0] == Message.UnChokedMessage().encode()
 

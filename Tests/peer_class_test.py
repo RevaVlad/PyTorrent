@@ -5,12 +5,12 @@ import Message
 import logging
 from struct import pack
 from pubsub import pub
-from peer import Peer
+from peerconnection import PeerConnection
 
 
 @pytest.fixture()
 def peer():
-    return Peer('127.0.0.1', 2)
+    return PeerConnection('127.0.0.1', 2)
 
 
 @pytest.fixture()
@@ -73,23 +73,23 @@ def mock_pubsub():
 class TestPeerClass:
     def test_analyze_message(self, messages):
         for message in messages:
-            assert type(message) is type(Peer.analyze_message(message.encode()))
+            assert type(message) is type(PeerConnection.analyze_message(message.encode()))
 
     def test_analyze_message_with_incorrect_message(self, caplog):
         with caplog.at_level(logging.ERROR):
-            result = Peer.analyze_message(b'\x00\x01\x02\x03')
+            result = PeerConnection.analyze_message(b'\x00\x01\x02\x03')
             assert result is None
             assert 'Некорректное сообщение, распаковка невозможна' in caplog.text
 
     def test_analyze_empty_message(self, caplog):
         with caplog.at_level(logging.ERROR):
-            result = Peer.analyze_message(b'')
+            result = PeerConnection.analyze_message(b'')
             assert result is None
             assert 'Некорректное сообщение, распаковка невозможна' in caplog.text
 
     def test_analyze_message_with_incorrect_message_index(self, caplog):
         with caplog.at_level(logging.ERROR):
-            result = Peer.analyze_message(pack('!IB', 1, 20))
+            result = PeerConnection.analyze_message(pack('!IB', 1, 20))
             assert result is None
             assert 'Некорректное сообщение, указан несуществующий id_message: 20' in caplog.text
 
@@ -159,7 +159,7 @@ class TestPeerClass:
 
     def test_handle_got_piece(self, monkeypatch, peer, mock_socket_class, mock_pubsub):
         pub.subscribe(mock_pubsub.update_part_bitfield, 'updatePartBitfield')
-        sent_peer = Peer('127.0.0.3', 2)
+        sent_peer = PeerConnection('127.0.0.3', 2)
         with monkeypatch.context() as m:
             m.setattr(peer, 'socket', mock_socket_class)
             # Исправить когда появится класс Piece на какой-то piece вместо 1
@@ -171,7 +171,7 @@ class TestPeerClass:
 
     def test_handle_available_piece(self, monkeypatch, peer, mock_socket_class, mock_pubsub):
         pub.subscribe(mock_pubsub.update_all_bitfield, 'updateAllBitfield')
-        sent_peer = Peer('127.0.0.2', 2)
+        sent_peer = PeerConnection('127.0.0.2', 2)
         sent_peer.bitfield = bitstring.BitArray(bin='10')
         peer.bitfield = bitstring.BitArray(bin='01')
         with monkeypatch.context() as m:
@@ -184,7 +184,7 @@ class TestPeerClass:
 
     def test_handle_send_piece(self, peer, mock_pubsub):
         pub.subscribe(mock_pubsub.send_piece, 'sendPiece')
-        peer.handle_send_piece((1, 2, b'Hi'))
+        peer.handle_piece_receive((1, 2, b'Hi'))
         assert mock_pubsub.data['piece_index'] == 1
         assert mock_pubsub.data['byte_offset'] == 2
         assert mock_pubsub.data['data'] == b'Hi'
@@ -195,7 +195,7 @@ class TestPeerClass:
             m.setattr(peer, 'socket', mock_socket_class)
             peer.peer_interested = True
             peer.peer_choked = False
-            peer.handle_request((1, 2, 1))
+            peer.handle_piece_request((1, 2, 1))
             assert mock_pubsub.data['peer'].ip == '127.0.0.1' and mock_pubsub.data['peer'].number_of_pieces == 2
             assert mock_pubsub.data['piece_index'] == 1
             assert mock_pubsub.data['byte_offset'] == 2

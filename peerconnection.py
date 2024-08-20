@@ -10,10 +10,9 @@ from struct import unpack
 
 
 class PeerConnection:
-
-    REQUEST_PIECE_EVENT = 'requestPiece'
-    RECEIVE_BLOCK_EVENT = 'sendPiece'
-    BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'
+    REQUEST_PIECE_EVENT = 'requestPiece'      # + ip, args: message, peer
+    RECEIVE_BLOCK_EVENT = 'sendPiece'         # + ip, args: request, peer
+    BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip, args: peer
 
     def __init__(self, ip, number_of_pieces: int, port=6881):
         self.ip = ip
@@ -111,6 +110,7 @@ class PeerConnection:
     @peer_choked.setter
     def peer_choked(self, value: bool) -> None:
         self._peer_choked = value
+
     # endregion
 
     def check_for_piece(self, index: int) -> bool:
@@ -133,8 +133,7 @@ class PeerConnection:
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
-        # Переделать когда появится piece на отправку с piece=(index, byte_offset, data)
-        pub.sendMessage(self.receive_event, piece=piece_message)
+        pub.sendMessage(self.receive_event, piece=piece_message, peer=self)
 
     def handle_piece_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
