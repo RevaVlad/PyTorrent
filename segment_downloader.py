@@ -81,6 +81,7 @@ class SegmentDownloader:
     async def request_block(self, block, peer):
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
         self.tasks[peer].add(block)
+        asyncio.create_task(block.change_status_to_missing(delay=10))
         await peer.send_message_to_peer(message.encode())
 
     def on_request_piece(self, request=None, peer=None):
