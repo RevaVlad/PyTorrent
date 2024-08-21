@@ -42,7 +42,6 @@ class PeerConnection:
     def analyze_message(message):
         try:
             message_length, message_id = unpack('!IB', message[:5])
-            logging.info(f"Message id - {message_id}")
         except struct.error:
             logging.error('Некорректное сообщение, распаковка невозможна')
             return None
@@ -101,7 +100,6 @@ class PeerConnection:
     def peer_interested(self, value: bool) -> None:
         self._peer_interested = value
         if value and self.choked:
-            logging.info('Send intereted message!')
             asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage().encode()))
 
     @property
@@ -132,9 +130,6 @@ class PeerConnection:
         return True
 
     async def handle_available_piece(self, message) -> None:
-        logging.info(f"Bitfield - {len(self.bitfield)}, value: {self.bitfield[:100]}")
-        logging.info(f"Message.segments - {len(message.segments)}")
-
         self.bitfield |= message.segments
         pub.sendMessage(self.bitfield_update_event, peer=self)
         if self.peer_choked and not self.interested:
@@ -142,13 +137,14 @@ class PeerConnection:
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
-        pub.sendMessage(self.receive_event, piece=piece_message, peer=self)
+        logging.info('into handle received piece')
+        pub.sendMessage(self.receive_event, request=piece_message, peer=self)
 
     def handle_piece_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
             pub.sendMessage(self.request_event, request=request, peer=self)
 
-    def handle_handshake(self) -> bool:
+    def handle_handshake_for_buffer(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
             handshake_message = Message.HandshakeMessage.decode(self.buffer[:68])
             self.handshake = True
@@ -169,13 +165,15 @@ class PeerConnection:
             self.buffer += data
         except (asyncio.TimeoutError, OSError):
             logging.error('Таймаут чтения с сокета')
+            self.is_active = False
 
     async def run(self):
+        logging.info('running')
+        self.peer_interested = True
         while self.is_active:
             await self.read_socket()
-
             while len(self.buffer) > 4 and self.is_active:
-                if (not self.handshake and self.handle_handshake()) or self.handle_continue_connection():
+                if (not self.handshake and self.handle_handshake_for_buffer()) or self.handle_continue_connection():
                     continue
 
                 message_length, = unpack("!I", self.buffer[:4])
@@ -187,9 +185,10 @@ class PeerConnection:
                     message = self.buffer[:total_length]
                     self.buffer = self.buffer[total_length:]
 
-                received_message = self.analyze_message(message)
-                if received_message:
-                    await self.handle_message(received_message)
+                    received_message = self.analyze_message(message)
+                    if received_message:
+                        await self.handle_message(received_message)
+            await asyncio.sleep(0.1)
 
     async def handle_message(self, new_message):
         match new_message:

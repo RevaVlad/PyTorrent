@@ -41,11 +41,19 @@ class SegmentDownloader:
             pub.subscribe(self.on_receive_block, peer.receive_event)
 
     async def download_segment(self):
+        logging.info('Starting downloading segment')
+        if all(len(tasks) == 0 for tasks in self.tasks.values()):
+            logging.info('Initializing first task')
+            lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
+            block = self.missing_blocks.pop()
+            await self.request_block(block, lazy_peer)
+
         while len(self.downloaded_blocks) != self.torrent_data:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
             if 0 < sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+                logging.info('i am in loop')
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
@@ -80,9 +88,10 @@ class SegmentDownloader:
                 pub.sendMessage(self.peer_deletion_event, segment_downloader=self)
 
     async def request_block(self, block, peer):
+        logging.info('request block')
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
         self.tasks[peer].add(block)
-        asyncio.create_task(block.change_status_to_missing(delay=10))
+        block.change_status_to_missing(delay=10)
         await peer.send_message_to_peer(message.encode())
 
     def on_request_piece(self, request=None, peer=None):
@@ -97,21 +106,22 @@ class SegmentDownloader:
             peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())
             self.torrent_stat.update_uploaded(block_length)
 
-    def on_receive_block(self, message: Message.SendPieceMessage = None, peer=None):
-        if not message:
+    def on_receive_block(self, request=None, peer=None):
+        logging.info('received block')
+        if not request:
             logging.error('Сообщение пусто')
             return
         if not peer:
             logging.error('Не указан пир')
             return
 
-        block = Block(message.index, message.byte_offset, len(message.data))
+        block = Block(request.index, request.byte_offset, len(request.data))
         if block not in self.tasks[peer]:
             logging.error("Получен блок, который не был запрошен")
             return
-
+        logging.info('update all')
         self.tasks[peer].remove(block)
-        block.data = message.data
+        block.data = request.data
         self.downloaded_blocks.add(block)
 
     def assemble_segment(self) -> bytes:

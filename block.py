@@ -31,7 +31,9 @@ class Block:
             logging.error(f"Incorrect value for block: {value}")
 
     def change_status_to_missing(self, delay=10):
+        logging.info(f"Changing block status to {self.status}")
         self._status_update_task = asyncio.create_task(self._change_status_to_missing_coroutine(delay))
+        return self._status_update_task
 
     async def _change_status_to_missing_coroutine(self, delay):
         await asyncio.sleep(delay)
