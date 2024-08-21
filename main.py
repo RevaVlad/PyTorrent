@@ -26,21 +26,22 @@ async def download_from_torrent_file(filename):
 
         while True:
             if not trackers_manager.available_peers.empty():
-                new_peer = trackers_manager.available_peers.get_nowait()
-                new_peer = PeerConnection(ip=new_peer[0], port=new_peer[1], number_of_pieces=torrent_file.total_segments)
-                await pi.add_peer([new_peer])
-                logging.info(f"New peer - {(new_peer.ip, new_peer.port)}")
+                if pi.active_peers <= 50:
+                    new_peer = trackers_manager.available_peers.get_nowait()
+                    new_peer = PeerConnection(ip=new_peer[0], port=new_peer[1], number_of_pieces=torrent_file.total_segments, info_hash=torrent_file.info_hash)
+                    await pi.add_peer([new_peer])
+                    logging.info(f"New peer - {(new_peer.ip, new_peer.port)}")
 
-                f = False
-                for _ in range(200):
-                    time.sleep(.01)
-                    if any(new_peer.bitfield):
-                        f = True
+                    f = False
+                    for _ in range(200):
+                        time.sleep(.01)
+                        if any(new_peer.bitfield):
+                            f = True
+                            break
+                    if f:
                         break
-                if f:
-                    break
 
-            await asyncio.sleep(.01)
+                await asyncio.sleep(.01)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
