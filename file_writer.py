@@ -29,17 +29,19 @@ class AsyncFile:
 class FileWriter:
     BUFFER_LENGTH = 2 ** 13
 
-    def __init__(self, torrent):
+    def __init__(self, torrent, destination: Path):
+        self.destination = destination
+        self.torrent = torrent
+
         self.segment_length = torrent.segment_length
         self.file_pref_lengths = [0]
         self.files = []
-        self.torrent = torrent
 
     def __enter__(self):
-        common_path = Path('.') if len(self.torrent.files) == 1 else Path('.') / self.torrent.name
+        common_path = self.destination / self.torrent.name if len(self.torrent.files) == 1 else self.destination
         pref_length = 0
         for file_info in self.torrent.files:
-            file_path = common_path / file_info['path']
+            file_path = common_path / Path.joinpath(*[Path(path_piece) for path_piece in file_info['path']])
             self.files.append(self._prepare_file(file_path, file_info['length']))
             pref_length += file_info['length']
             self.file_pref_lengths.append(pref_length)

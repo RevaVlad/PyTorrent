@@ -20,7 +20,7 @@ class SegmentDownloader:
         self.torrent_data = torrent_data
         self.file_writer = file_writer
         self.torrent_stat = torrent_statistics
-        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + segment_id
+        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
         self.segment_id = segment_id
 
         segment_length = torrent_data.segment_length if segment_id == torrent_data.total_segments - 1 \
@@ -57,6 +57,7 @@ class SegmentDownloader:
             logging.error(f"Не удалось скачать сегмент №{self.segment_id} (хэш сегмента был неверным)")
             return False
 
+        self.torrent_stat.update_downloaded(len(data))
         await self.file_writer.write_segment(self.segment_id, data)
 
     def check_tasks_completion(self):
