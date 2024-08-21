@@ -65,9 +65,7 @@ class TrackerManager:
                                for tracker in self.tracker_clients]
 
             try:
-                logging.info("Waiting for server requests")
                 await asyncio.gather(*server_requests)
-                logging.info("Server requests completed")
 
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():

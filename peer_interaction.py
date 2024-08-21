@@ -70,9 +70,9 @@ class TorrentDownloader:
 
     async def add_peer(self):
         (peer_ip, peer_port, operation_result) = await self.try_get_new_peer()
-        peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
         if not operation_result:
             return False
+        peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
@@ -99,7 +99,7 @@ class TorrentDownloader:
     async def download_rarest_segment(self):
         while True:
             count, rarest_index = heapq.heappop(self.segment_heap)
-            if self.available_segments[rarest_index][2] is False:
+            if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
                 downloader = SegmentDownloader(segment_id=rarest_index, torrent_data=self.torrent,
                                                file_writer=self.file_writer, torrent_statistics=self.torrent_statistics,
                                                peers=self.available_segments[rarest_index][1][0] if count == 1 else
@@ -107,11 +107,14 @@ class TorrentDownloader:
                 for peer in downloader.peers_strikes:
                     await self.remove_peer_from_available_segments(peer)
 
-                # return await downloader.download_segment()
+                result = await downloader.download_segment()
+
                 # TODO: придумать что делать с блокировкой пиров
                 heapq.heappush(self.segment_heap, (count, rarest_index))
                 for peer in downloader.peers_strikes:
                     self.active_peers.append(peer)
+                if not result:
+                    await self.download_rarest_segment()
             else:
                 await self.download_rarest_segment()
 

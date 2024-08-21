@@ -45,7 +45,7 @@ class SegmentDownloader:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
-            if sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+            if 0 < sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
