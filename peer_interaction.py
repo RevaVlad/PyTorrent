@@ -40,10 +40,13 @@ class PeerInteraction:
 
     def get_most_rare_segment(self):
         count, rarest_index = heapq.heappop(self.segment_heap)
-        # Добавить file_writer и torrent_statistics
-        return SegmentDownloader(segment_id=rarest_index, torrent_data=self.torrent,
-                                 peers=self.available_segments[rarest_index][1][0] if count == 1 else
-                                 self.available_segments[rarest_index][1][:2])
+        if self.available_segments[rarest_index][2] is False:
+            # Добавить file_writer и torrent_statistics
+            return SegmentDownloader(segment_id=rarest_index, torrent_data=self.torrent,
+                                     peers=self.available_segments[rarest_index][1][0] if count == 1 else
+                                     self.available_segments[rarest_index][1][:2])
+        else:
+            self.get_most_rare_segment()
 
     async def block_peer(self, peer):
         if peer in self.peers:
