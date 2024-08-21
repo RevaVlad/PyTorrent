@@ -65,7 +65,9 @@ class TrackerManager:
                                for tracker in self.tracker_clients]
 
             try:
+                logging.info("Waiting for server requests")
                 await asyncio.gather(*server_requests)
+                logging.info("Server requests completed")
 
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():
@@ -78,3 +80,4 @@ class TrackerManager:
 
     def create_peers_update_task(self):
         self.update_task = asyncio.create_task(self._update_peers())
+        logging.info("Created peer updation task")

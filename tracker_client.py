@@ -35,10 +35,12 @@ class TrackerClient:
         self.last_request_time = -1
 
     async def make_request(self, event):
+        logging.info("started making request")
         current_time = time.monotonic()
         time_diff = current_time - self.last_request_time
         if event != TrackerEvent.STARTED and time_diff < self.request_interval:
             if event:
+                logging.info(f"Sleeping: {time_diff}")
                 await asyncio.sleep(time_diff)
             else:
                 return
@@ -58,7 +60,7 @@ class TrackerClient:
         if event != TrackerEvent.CHECK:
             logging.info(f'Making request at "{self.url}" with params: {params}')
         async with aiohttp.ClientSession() as http_client:
-            async with http_client.get(self.url + '?' + urlencode(params), timeout=5) as response:
+            async with http_client.get(self.url + '?' + urlencode(params), timeout=3) as response:
                 if not response.status == 200:
                     raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
                 data = await response.read()

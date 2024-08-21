@@ -17,6 +17,8 @@ class Block:
         self.status = Block.Missing
         self._data = None
 
+        self._status_update_task = None
+
     @property
     def data(self):
         return self._data
@@ -28,12 +30,20 @@ class Block:
         else:
             logging.error(f"Incorrect value for block: {value}")
 
-    async def change_status_to_missing(self, delay=10):
+    def change_status_to_missing(self, delay=10):
+        self._status_update_task = asyncio.create_task(self._change_status_to_missing_coroutine(delay))
+
+    async def _change_status_to_missing_coroutine(self, delay):
         await asyncio.sleep(delay)
-        self.status = Block.Missing
+        if self.status == Block.Pending:
+            self.status = Block.Missing
 
     def __hash__(self):
         return 12763 * self.segment_id + self.offset
 
     def __eq__(self, other):
         return type(other) == type(self) and self.segment_id == other.segment_id and self.offset == other.offset
+
+    def close(self):
+        if self._status_update_task:
+            self._status_update_task.cancel()
