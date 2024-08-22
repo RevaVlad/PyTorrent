@@ -1,4 +1,5 @@
 import struct
+import time
 
 import bitstring
 import socket
@@ -21,7 +22,7 @@ class PeerConnection:
         self.info_hash = info_hash
 
         self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
-        self.request_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
+        self.request_event = PeerConnection.REQUEST_PIECE_EVENT + ip
         self.bitfield_update_event = PeerConnection.BITFIELD_UPDATE_EVENT + ip
 
         bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
@@ -137,8 +138,19 @@ class PeerConnection:
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
-        logging.info('into handle received piece')
+        logging.info([x.name for x in pub.topicsMap[self.receive_event].getListeners()])
+        try:
+            pub.subscribe(self.test_recieve, self.receive_event)
+        except Exception as e:
+            logging.error(f"Exception during subscription: {e}")
         pub.sendMessage(self.receive_event, request=piece_message, peer=self)
+
+    def test_recieve(self, request=None, peer=None):
+        logging.info('i got sendMessage')
+        if peer:
+            logging.info(peer.receive_event)
+        else:
+            logging.info("No peer provided")
 
     def handle_piece_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
