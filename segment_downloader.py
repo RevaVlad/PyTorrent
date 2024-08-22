@@ -11,7 +11,7 @@ from block import Block
 
 class SegmentDownloader:
     MAX_STRIKES_PER_PEER = 3
-    MAX_PENDING_BLOCKS = 10
+    MAX_PENDING_BLOCKS = 1
 
     PEER_DELETION_EVENT = 'peerDeleted'  # + segment_id, args: segment_downloader
 
@@ -41,18 +41,13 @@ class SegmentDownloader:
             pub.subscribe(self.on_receive_block, peer.receive_event)
 
     async def download_segment(self):
-        logging.info('Starting downloading segment')
-        if all(len(tasks) == 0 for tasks in self.tasks.values()):
-            logging.info('Initializing first task')
-            lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
-            block = self.missing_blocks.pop()
-            await self.request_block(block, lazy_peer)
+        logging.info(f'Starting downloading segment, peers: {list(self.tasks)}')
 
         while len(self.downloaded_blocks) != self.torrent_data:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
-            if 0 < sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+            if any(self.tasks) and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
                 logging.info('i am in loop')
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
@@ -92,7 +87,7 @@ class SegmentDownloader:
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
         self.tasks[peer].add(block)
         block.change_status_to_missing(delay=10)
-        await peer.send_message_to_peer(message.encode())
+        await peer.send_message_to_peer(message)
 
     def on_request_piece(self, request=None, peer=None):
         if request is None:
@@ -103,7 +98,7 @@ class SegmentDownloader:
             piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_length
             loop = asyncio.get_event_loop()
             block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
-            peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())
+            peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block))
             self.torrent_stat.update_uploaded(block_length)
 
     def on_receive_block(self, request=None, peer=None):

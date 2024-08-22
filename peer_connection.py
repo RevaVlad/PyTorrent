@@ -67,7 +67,13 @@ class PeerConnection:
             return False
         return True
 
-    async def send_message_to_peer(self, message: bytes) -> None:
+    async def send_message_to_peer(self, message: Message) -> None:
+        allowed_messages = (Message.SendPieceMessage, Message.InterestedMessage, Message.HandshakeMessage)
+        if all(not isinstance(message, allowed_message) for allowed_message in allowed_messages):
+            while self.peer_choked:
+                await asyncio.sleep(.1)
+
+        message = message.encode()
         try:
             self.writer.write(message)
             await self.writer.drain()
@@ -100,7 +106,7 @@ class PeerConnection:
     def peer_interested(self, value: bool) -> None:
         self._peer_interested = value
         if value and self.choked:
-            asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage().encode()))
+            asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage()))
 
     @property
     def peer_choked(self) -> bool:
@@ -118,12 +124,12 @@ class PeerConnection:
     async def handle_got_piece(self, message) -> None:
         self.bitfield[message.piece_index] = True
         if self.peer_choked and not self.interested:
-            await self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
 
     async def handle_handshake(self):
         handshake = Message.HandshakeMessage(self.info_hash)
-        await self.send_message_to_peer(handshake.encode())
+        await self.send_message_to_peer(handshake)
         if self.is_active is False:
             logging.error('Произошла ошибка при handshake-e, пир неактивен')
             return False
@@ -133,11 +139,12 @@ class PeerConnection:
         self.bitfield |= message.segments
         pub.sendMessage(self.bitfield_update_event, peer=self)
         if self.peer_choked and not self.interested:
-            await self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
         logging.info('into handle received piece')
+        logging.info([listener.name for listener in pub.topicsMap[self.receive_event].getListeners()])
         pub.sendMessage(self.receive_event, request=piece_message, peer=self)
 
     def handle_piece_request(self, request) -> None:
@@ -199,28 +206,28 @@ class PeerConnection:
             case Message.ChokedMessage():
                 self.peer_choked = True
             case Message.UnChokedMessage():
-                logging.info('unchocked')
+                logging.info('got unchocked')
                 self.peer_choked = False
             case Message.InterestedMessage():
-                logging.info('interested')
+                logging.info('got interested')
                 self.peer_interested = True
             case Message.NotInterestedMessage():
-                logging.info('not interested')
+                logging.info('got not interested')
                 self.peer_interested = False
             case Message.HaveMessage():
-                logging.info('have massage')
+                logging.info('got have massage')
                 await self.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
-                logging.info('peer segments message')
+                logging.info('got peer segments message')
                 await self.handle_available_piece(new_message)
             case Message.RequestsMessage():
-                logging.info('request message')
+                logging.info('got request message')
                 self.handle_piece_request(new_message)
             case Message.SendPieceMessage():
-                logging.info('send piece message')
+                logging.info('got send piece message')
                 self.handle_piece_receive(new_message)
             case Message.CancelMessage():
-                logging.info('CancelMessage')
+                logging.info('got CancelMessage')
             case _:
                 logging.error(f'Такого типа сообщения нет: {type(new_message)}')
 
