@@ -111,7 +111,7 @@ class TorrentDownloader:
                 if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
                     downloader = SegmentDownloader(segment_id=rarest_index, torrent_data=self.torrent,
                                                    file_writer=self.file_writer, torrent_statistics=self.torrent_statistics,
-                                                   peers=self.available_segments[rarest_index][1][0] if count == 1 else
+                                                   peers=[self.available_segments[rarest_index][1][0]] if count == 1 else
                                                    self.available_segments[rarest_index][1][:2])
                     for peer in downloader.peers_strikes:
                         await self.remove_peer_from_available_segments(peer)
