@@ -199,28 +199,28 @@ class PeerConnection:
             case Message.ChokedMessage():
                 self.peer_choked = True
             case Message.UnChokedMessage():
-                logging.info('unchocked')
+                logging.info('got unchocked')
                 self.peer_choked = False
             case Message.InterestedMessage():
-                logging.info('interested')
+                logging.info('got interested')
                 self.peer_interested = True
             case Message.NotInterestedMessage():
-                logging.info('not interested')
+                logging.info('got not interested')
                 self.peer_interested = False
             case Message.HaveMessage():
-                logging.info('have massage')
+                logging.info('got have massage')
                 await self.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
-                logging.info('peer segments message')
+                logging.info('got peer segments message')
                 await self.handle_available_piece(new_message)
             case Message.RequestsMessage():
-                logging.info('request message')
+                logging.info('got request message')
                 self.handle_piece_request(new_message)
             case Message.SendPieceMessage():
-                logging.info('send piece message')
+                logging.info('got send piece message')
                 self.handle_piece_receive(new_message)
             case Message.CancelMessage():
-                logging.info('CancelMessage')
+                logging.info('got cancel message')
             case _:
                 logging.error(f'Такого типа сообщения нет: {type(new_message)}')
 

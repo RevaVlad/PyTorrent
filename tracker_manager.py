@@ -69,7 +69,8 @@ class TrackerManager:
 
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():
-                        self.available_peers.put_nowait(tracker.new_peers.get_nowait())
+                        peer = tracker.new_peers.get_nowait()
+                        self.available_peers.put_nowait(peer)
 
                 await asyncio.sleep(1)
             except asyncio.CancelledError:

@@ -11,7 +11,7 @@ from block import Block
 
 class SegmentDownloader:
     MAX_STRIKES_PER_PEER = 3
-    MAX_PENDING_BLOCKS = 10
+    MAX_PENDING_BLOCKS = 1
 
     PEER_DELETION_EVENT = 'peerDeleted'  # + segment_id, args: segment_downloader
 
@@ -23,7 +23,7 @@ class SegmentDownloader:
         self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
         self.segment_id = segment_id
 
-        segment_length = torrent_data.segment_length if segment_id == torrent_data.total_segments - 1 \
+        segment_length = torrent_data.segment_length if segment_id != torrent_data.total_segments - 1 \
             else torrent_data.total_length % torrent_data.segment_length
 
         self.blocks_count = math.ceil(segment_length / Block.BLOCK_LENGTH)
@@ -43,20 +43,12 @@ class SegmentDownloader:
 
     async def download_segment(self):
         logging.info('Starting downloading segment')
-        '''
-        if all(len(tasks) == 0 for tasks in self.tasks.values()):
-            logging.info('Initializing first task')
-            lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
-            block = self.missing_blocks.pop()
-            await self.request_block(block, lazy_peer)
-        '''
 
         while len(self.downloaded_blocks) != self.blocks_count:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
             if any(self.tasks) and any(self.missing_blocks) and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
-                logging.info('i am in loop')
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
@@ -68,6 +60,7 @@ class SegmentDownloader:
             logging.error(f"Не удалось скачать сегмент №{self.segment_id} (хэш сегмента был неверным)")
             return False
 
+        logging.error(f"Удалось скачать сегмент №{self.segment_id}!!!")
         self.torrent_stat.update_downloaded(len(data))
         await self.file_writer.write_segment(self.segment_id, data)
 
@@ -75,7 +68,7 @@ class SegmentDownloader:
         for peer in self.tasks:
             for block in self.tasks[peer].copy():
                 if block.status == Block.Missing:
-                    logging.info(f'I delete {peer.ip}')
+                    logging.info(f"Striked peer: {peer.ip}")
                     self.peers_strikes[peer] += 1
                     self.tasks[peer].remove(block)
                     self.missing_blocks.append(block)
@@ -87,13 +80,14 @@ class SegmentDownloader:
     async def check_peers_connection(self):
         for peer in list(self.peers_strikes):
             if not peer.is_active or self.peers_strikes[peer] > SegmentDownloader.MAX_STRIKES_PER_PEER:
+                logging.info(f"Peer was too slow, it got soft ban {peer.ip}")
                 del self.peers_strikes[peer]
                 del self.tasks[peer]
                 await peer.close()
                 pub.sendMessage(self.peer_deletion_event, segment_downloader=self)
 
     async def request_block(self, block, peer):
-        logging.info('request block')
+        logging.info(f'request block from {peer.ip}')
         block.status = Block.Pending
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
         logging.info(f'{block.offset, block.segment_id}')
@@ -114,8 +108,6 @@ class SegmentDownloader:
             self.torrent_stat.update_uploaded(block_length)
 
     def on_receive_block(self, request=None, peer=None):
-        logging.info(f'{request.index}, {request.byte_offset}')
-        logging.info('received block')
         if not request:
             logging.error('Сообщение пусто')
             return
@@ -123,18 +115,23 @@ class SegmentDownloader:
             logging.error('Не указан пир')
             return
 
+        logging.info(f'{request.index}, {request.byte_offset}')
+        logging.info(f'received block from {peer.ip}')
+
         block = Block(request.index, request.byte_offset, len(request.data))
         logging.info(len(self.tasks[peer]))
         if block not in self.tasks[peer]:
             logging.error("Получен блок, который не был запрошен")
             return
-        logging.info('update all')
+        logging.info("Блок был добавлен в скаченные")
         self.tasks[peer].remove(block)
         block.data = request.data
         self.downloaded_blocks.add(block)
 
     def assemble_segment(self) -> bytes:
-        return b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
+        logging.info(f"Block lengths: {[len(block.data) for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)]}")
+        result = b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
+        return result
 
     def add_peer(self, peer):
         self.peers_strikes[peer] = 0

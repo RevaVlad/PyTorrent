@@ -29,7 +29,14 @@ async def download_from_torrent_file(filename):
     logging.info(f"Download completed!!!")
 
 
+def check_segment(filename, segment_id):
+    torrent_file = TorrentData(filename)
+    with FileWriter(torrent_file, destination=Path('./downloaded')) as file_writer:
+        return asyncio.run(file_writer.read_segment(segment_id))
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    # logging.getLogger("asyncio").setLevel(logging.WARNING)
-    asyncio.run(download_from_torrent_file("torrent_files/test.torrent"))
+    torrent_file = TorrentData('torrent_files/test.torrent')
+    res = check_segment('torrent_files/test.torrent', 0)
+    logging.info(f"Expected segment len: {len(res)}")
+    asyncio.run(download_from_torrent_file("torrent_files/test.torrent"), debug=True)

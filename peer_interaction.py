@@ -119,11 +119,12 @@ class TorrentDownloader:
                         await self.remove_peer_from_available_segments(peer)
                     result = await downloader.download_segment()
                     logging.info('result is: {}'.format(result))
-                    logging.info(downloader.peers_strikes)
                     if result:
                         self.available_segments[rarest_index][2] = True
                     # TODO: придумать что делать с блокировкой пиров
+                    self.segment_heap.push(count, rarest_index)
                     for peer in downloader.peers_strikes:
+                        self.active_peers.append(peer)
                         self.get_bitfield_from_peer(peer)
                     if result:
                         return True
