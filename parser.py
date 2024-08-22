@@ -1,4 +1,6 @@
 import hashlib
+import logging
+
 import bencode
 from math import ceil
 
@@ -18,13 +20,15 @@ class TorrentData:
         self.files = self._get_files_list(info)
 
         self.total_length = sum(file_info['length'] for file_info in self.files)
+        # logging.info(f"Total length: {self.total_length}, in MB: {self.total_length / 2**20}. Piece length: {self.segment_length}")
         self.total_segments = ceil(self.total_length / self.segment_length)
+        # logging.info(f'Total segments: {self.total_segments}')
 
     def _get_announce_list(self, data):
         return [url[0] for url in data['announce-list']] if 'announce-list' in data else [data['announce']]
 
     def _get_files_list(self, info):
-        return info['files'] if 'files' in info else [{'length': info['length'], 'path': info['name']}]
+        return info['files'] if 'files' in info else [{'length': info['length'], 'path': [info['name']]}]
 
 
 if __name__ == '__main__':

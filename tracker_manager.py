@@ -78,3 +78,4 @@ class TrackerManager:
 
     def create_peers_update_task(self):
         self.update_task = asyncio.create_task(self._update_peers())
+        logging.info("Created peer updation task")

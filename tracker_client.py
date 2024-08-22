@@ -55,9 +55,10 @@ class TrackerClient:
             'event': event.value
         }
 
-        logging.info(f'Making request at "{self.url}" with params: {params}')
+        if event != TrackerEvent.CHECK:
+            logging.info(f'Making request at "{self.url}" with params: {params}')
         async with aiohttp.ClientSession() as http_client:
-            async with http_client.get(self.url + '?' + urlencode(params), timeout=5) as response:
+            async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
                 if not response.status == 200:
                     raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
                 data = await response.read()

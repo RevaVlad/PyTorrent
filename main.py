@@ -1,29 +1,35 @@
 import asyncio
 import logging
+import time
 
 from parser import TorrentData
 from torrent_statistics import TorrentStatistics
 from tracker_manager import TrackerManager
+from peer_interaction import TorrentDownloader
 from file_writer import FileWriter
-from peer_manager import PeerManager
+from pathlib import Path
 
 
 async def download_from_torrent_file(filename):
     torrent_file = TorrentData(filename)
     torrent_statistics = TorrentStatistics(torrent_file.total_length)
-    async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
-        logging.info(f"Started tracker manager, active trackers: {', '.join([tracker.url for tracker in trackers_manager.tracker_clients])}")
-        trackers_manager.create_peers_update_task()
-        logging.info("Created peers update task")
+    logging.info(
+        f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
-        for i in range(1000):
-            if not trackers_manager.available_peers.empty():
-                logging.info(f"New peer - {trackers_manager.available_peers.get_nowait()}")
-            await asyncio.sleep(0.01)
+    with FileWriter(torrent_file, destination=Path('./downloaded')) as file_writer:
+        async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
+            logging.info("Created all objects")
+            trackers_manager.create_peers_update_task()
+            torrent_downloader = TorrentDownloader(torrent_file,
+                                                   file_writer,
+                                                   torrent_statistics,
+                                                   trackers_manager.available_peers)
+            await torrent_downloader.download_torrent()
 
-    #peers_manager = PeerManager(torrent_file, trackers_manager, segment_writer)
+    logging.info(f"Download completed!!!")
 
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(download_from_torrent_file("test.torrent"))
+    # logging.getLogger("asyncio").setLevel(logging.WARNING)
+    asyncio.run(download_from_torrent_file("torrent_files/test.torrent"))
