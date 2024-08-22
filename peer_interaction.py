@@ -7,7 +7,7 @@ from priority_queue import PriorityQueue
 
 
 class TorrentDownloader:
-    MAX_PEER_COUNT = 1
+    MAX_PEER_COUNT = 50
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 1
 
     def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):

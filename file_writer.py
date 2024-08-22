@@ -59,8 +59,9 @@ class FileWriter:
 
         if not directory_path.exists():
             directory_path.mkdir(parents=True, exist_ok=True)
-        if not file_path.exists():
-            file_path.open('w').close()
+        if file_path.exists():
+            return AsyncFile(file_path.open('rb+'))
+        file_path.open('w').close()
         file = file_path.open('rb+')
 
         remaining_length = file_length

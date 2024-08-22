@@ -23,7 +23,7 @@ class SegmentDownloader:
         self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
         self.segment_id = segment_id
 
-        segment_length = torrent_data.segment_length if segment_id == torrent_data.total_segments - 1 \
+        segment_length = torrent_data.segment_length if segment_id != torrent_data.total_segments - 1 \
             else torrent_data.total_length % torrent_data.segment_length
 
         self.blocks_count = math.ceil(segment_length / Block.BLOCK_LENGTH)
@@ -61,6 +61,7 @@ class SegmentDownloader:
             logging.error(f"Не удалось скачать сегмент №{self.segment_id} (хэш сегмента был неверным)")
             return False
 
+        logging.error(f"Удалось скачать сегмент №{self.segment_id}!!!")
         self.torrent_stat.update_downloaded(len(data))
         await self.file_writer.write_segment(self.segment_id, data)
 
@@ -129,8 +130,8 @@ class SegmentDownloader:
         self.downloaded_blocks.add(block)
 
     def assemble_segment(self) -> bytes:
+        logging.info(f"Block lengths: {[len(block.data) for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)]}")
         result = b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
-        logging.info(f"Содержимое сегмента: {repr(result)[2:100]}")
         return result
 
     def add_peer(self, peer):
