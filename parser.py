@@ -28,7 +28,7 @@ class TorrentData:
         return [url[0] for url in data['announce-list']] if 'announce-list' in data else [data['announce']]
 
     def _get_files_list(self, info):
-        return info['files'] if 'files' in info else [{'length': info['length'], 'path': info['name']}]
+        return info['files'] if 'files' in info else [{'length': info['length'], 'path': [info['name']]}]
 
 
 if __name__ == '__main__':

@@ -38,7 +38,7 @@ class FileWriter:
         self.files = []
 
     def __enter__(self):
-        common_path = self.destination / self.torrent.name if len(self.torrent.files) == 1 else self.destination
+        common_path = self.destination / self.torrent.torrent_name if len(self.torrent.files) != 1 else self.destination
         pref_length = 0
         for file_info in self.torrent.files:
             file_path = common_path / Path.joinpath(*[Path(path_piece) for path_piece in file_info['path']])
