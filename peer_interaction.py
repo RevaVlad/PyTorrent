@@ -70,6 +70,10 @@ class TorrentDownloader:
             return None, None, False
 
     async def add_peer(self):
+        # TODO: Убрать этот иф потом
+        if self.bitfield_active:
+            return False
+
         await asyncio.sleep(1)
         (peer_ip, peer_port, operation_result) = await self.try_get_new_peer()
         if not operation_result:
