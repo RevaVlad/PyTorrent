@@ -32,6 +32,7 @@ class SegmentDownloader:
         self.missing_blocks = ([Block(self.segment_id, i * Block.BLOCK_LENGTH) for i in range(self.blocks_count - 1)] +
                                [Block(self.segment_id, (self.blocks_count - 1) * Block.BLOCK_LENGTH,
                                       segment_length % Block.BLOCK_LENGTH)])
+        logging.info(self.missing_blocks)
 
         self.tasks = {peer: set() for peer in peers}
         self.peers_strikes = {peer: 0 for peer in peers}
@@ -42,17 +43,19 @@ class SegmentDownloader:
 
     async def download_segment(self):
         logging.info('Starting downloading segment')
+        '''
         if all(len(tasks) == 0 for tasks in self.tasks.values()):
             logging.info('Initializing first task')
             lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
             block = self.missing_blocks.pop()
             await self.request_block(block, lazy_peer)
+        '''
 
-        while len(self.downloaded_blocks) != self.torrent_data:
+        while len(self.downloaded_blocks) != self.blocks_count:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
-            if 0 < sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+            if any(self.tasks) and any(self.missing_blocks) and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
                 logging.info('i am in loop')
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
@@ -91,12 +94,11 @@ class SegmentDownloader:
 
     async def request_block(self, block, peer):
         logging.info('request block')
+        block.status = Block.Pending
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
         logging.info(f'{block.offset, block.segment_id}')
         self.tasks[peer].add(block)
         block.change_status_to_missing(delay=10)
-        pub.subscribe(self.on_request_piece, peer.receive_event)
-        logging.info(peer.receive_event)
         await peer.send_message_to_peer(message.encode())
 
     def on_request_piece(self, request=None, peer=None):
@@ -105,7 +107,7 @@ class SegmentDownloader:
         elif peer is None:
             logging.error('Не указан пир, запросивший сегмент')
         else:
-            piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_length
+            piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
             loop = asyncio.get_event_loop()
             block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
             peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())

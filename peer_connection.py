@@ -138,19 +138,7 @@ class PeerConnection:
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
-        logging.info([x.name for x in pub.topicsMap[self.receive_event].getListeners()])
-        try:
-            pub.subscribe(self.test_recieve, self.receive_event)
-        except Exception as e:
-            logging.error(f"Exception during subscription: {e}")
         pub.sendMessage(self.receive_event, request=piece_message, peer=self)
-
-    def test_recieve(self, request=None, peer=None):
-        logging.info('i got sendMessage')
-        if peer:
-            logging.info(peer.receive_event)
-        else:
-            logging.info("No peer provided")
 
     def handle_piece_request(self, request) -> None:
         if not self.peer_choked and self.peer_interested:
