@@ -64,6 +64,8 @@ class SegmentDownloader:
             await asyncio.sleep(.1)
 
         data = self.assemble_segment()
+        logging.info(hashlib.sha1(data).digest())
+        logging.info(self.torrent_data.segments_hash[self.segment_id])
         if hashlib.sha1(data).digest() != self.torrent_data.segments_hash[self.segment_id]:
             logging.error(f"Не удалось скачать сегмент №{self.segment_id} (хэш сегмента был неверным)")
             return False
@@ -75,12 +77,12 @@ class SegmentDownloader:
         for peer in self.tasks:
             for block in self.tasks[peer].copy():
                 if block.status == Block.Missing:
-                    logging.info(f'I delete {peer.ip}')
+                    logging.info(f'I strike peer: {peer.ip}')
                     self.peers_strikes[peer] += 1
                     self.tasks[peer].remove(block)
                     self.missing_blocks.append(block)
                 elif block.status == Block.Retrieved:
-                    logging.info(f'I delete {peer.ip}')
+                    logging.info(f'I delete but retried {peer.ip}')
                     self.tasks[peer].remove(block)
                     self.downloaded_blocks.add(block)
 
@@ -134,6 +136,7 @@ class SegmentDownloader:
         self.downloaded_blocks.add(block)
 
     def assemble_segment(self) -> bytes:
+        logging.info([block.offset for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
         return b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
 
     def add_peer(self, peer):
