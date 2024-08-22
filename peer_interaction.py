@@ -1,9 +1,9 @@
 import asyncio
 import logging
-import heapq
 from segment_downloader import SegmentDownloader
 from peer_connection import PeerConnection
 from pubsub import pub
+from priority_queue import PriorityQueue
 
 
 class TorrentDownloader:
@@ -23,7 +23,7 @@ class TorrentDownloader:
         self.available_segments = [[0, [], False] for _ in range(torrent.total_segments)]
         self.available_segments_lock = asyncio.Lock()
 
-        self.segment_heap = [(0, i) for i in range(torrent.total_segments)]
+        self.segment_heap = PriorityQueue()
         self.segment_download_tasks = []
         # self.segments_strikes = [0] * torrent.total_segments
         self.is_active = True
@@ -31,7 +31,7 @@ class TorrentDownloader:
 
     async def download_torrent(self):
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
-        while len(self.segment_heap) or len(self.segment_download_tasks):
+        while any(x[2] is False for x in self.available_segments) or len(self.segment_download_tasks):
             if len(self.segment_download_tasks) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 self.segment_download_tasks.append(asyncio.create_task(self.download_rarest_segment()))
 
@@ -100,18 +100,18 @@ class TorrentDownloader:
                 if peer.bitfield[i] == 1:
                     self.available_segments[i][0] += 1
                     self.available_segments[i][1].append(peer)
-                    heapq.heappush(self.segment_heap, (self.available_segments[i][0], i))
+                    self.segment_heap.push(self.available_segments[i][0], i)
             self.bitfield_active = True
 
     async def download_rarest_segment(self):
         while True:
             if self.bitfield_active:
-                count, rarest_index = heapq.heappop(self.segment_heap)
-
+                count, rarest_index = self.segment_heap.pop()
+                logging.info(f'{count}, {rarest_index}')
                 if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
                     downloader = SegmentDownloader(segment_id=rarest_index, torrent_data=self.torrent,
                                                    file_writer=self.file_writer, torrent_statistics=self.torrent_statistics,
-                                                   peers=self.available_segments[rarest_index][1][0] if count == 1 else
+                                                   peers=[self.available_segments[rarest_index][1][0]] if count == 1 else
                                                    self.available_segments[rarest_index][1][:2])
                     for peer in downloader.peers_strikes:
                         await self.remove_peer_from_available_segments(peer)
@@ -120,7 +120,7 @@ class TorrentDownloader:
                     if result:
                         self.available_segments[rarest_index][2] = True
                     # TODO: придумать что делать с блокировкой пиров
-                    heapq.heappush(self.segment_heap, (count, rarest_index))
+                    self.segment_heap.push(count, rarest_index)
                     for peer in downloader.peers_strikes:
                         self.active_peers.append(peer)
                         self.get_bitfield_from_peer(peer)
