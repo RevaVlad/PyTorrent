@@ -57,12 +57,18 @@ class TrackerClient:
 
         if event != TrackerEvent.CHECK:
             logging.info(f'Making request at "{self.url}" with params: {params}')
-        async with aiohttp.ClientSession() as http_client:
-            async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
-                if not response.status == 200:
-                    raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
-                data = await response.read()
-                self._parse_response(bencode.decode(data))
+        while True:
+            try:
+                async with aiohttp.ClientSession() as http_client:
+                    async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
+                        if not response.status == 200:
+                            raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
+                        data = await response.read()
+                        self._parse_response(bencode.decode(data))
+                        return
+            except (aiohttp.ClientError, asyncio.TimeoutError):
+                logging.info('Неудачная попытка входа')
+                await asyncio.sleep(10)
 
     def _parse_response(self, response):
         if 'failure reason' in response:
