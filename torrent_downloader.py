@@ -118,10 +118,25 @@ class TorrentDownloader:
                 self.active_peers.append(peer)
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
                 pub.subscribe(self.get_bitfield_from_peer, peer.bitfield_update_event)
+                self.check_for_unchoked(peer)
                 return True
 
         logging.error('Возникли проблемы с установлением соединения с пиром')
         return False
+
+    def check_for_unchoked(self, peer):
+        _was_unchoked = asyncio.create_task(self._check_for_unchoked(peer, 10))
+
+    async def _check_for_unchoked(self, peer: PeerConnection, delay):
+        await asyncio.sleep(delay)
+        if peer.peer_choked is True:
+            logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
+            if peer in self.active_peers:
+                self.active_peers.remove(peer)
+            await peer.close()
+            return False
+        logging.info('Пир удачно подключился')
+        return True
 
     def get_bitfield_from_peer(self, peer):
         asyncio.create_task(self._get_bitfield_from_peer_task(peer))

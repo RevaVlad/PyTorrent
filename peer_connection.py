@@ -174,7 +174,6 @@ class PeerConnection:
             await self.send_message_to_peer(Message.InterestedMessage().encode())
             self.interested = True
 
-
         while self.is_active:
             await self.read_socket()
             while len(self.buffer) > 4 and self.is_active:
