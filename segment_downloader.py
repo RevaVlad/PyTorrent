@@ -4,9 +4,17 @@ import Message
 import parser
 import math
 import hashlib
+
+from enum import Enum
 from pubsub import pub
 from peer_connection import PeerConnection
 from block import Block
+
+
+class DownloadResult(Enum):
+    PENDING = 0
+    FAILED = 1
+    COMPLETED = 2
 
 
 class SegmentDownloader:
@@ -14,14 +22,18 @@ class SegmentDownloader:
     MAX_PENDING_BLOCKS = 1
 
     PEER_DELETION_EVENT = 'peerDeleted'  # + segment_id, args: segment_downloader
+    DOWNLOADING_STOPPED_EVENT = 'downloadingStopped'  # + segment_id, args: segment_downloader
 
     def __init__(self, segment_id, torrent_data: parser.TorrentData,
                  file_writer, torrent_statistics, peers: list[PeerConnection]):
         self.torrent_data = torrent_data
         self.file_writer = file_writer
         self.torrent_stat = torrent_statistics
-        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
         self.segment_id = segment_id
+        self.download_result = DownloadResult.PENDING
+
+        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
+        self.downloading_stopped_event = SegmentDownloader.DOWNLOADING_STOPPED_EVENT + str(segment_id)
 
         segment_length = torrent_data.segment_length if segment_id != torrent_data.total_segments - 1 \
             else torrent_data.total_length % torrent_data.segment_length
@@ -32,23 +44,27 @@ class SegmentDownloader:
         self.missing_blocks = ([Block(self.segment_id, i * Block.BLOCK_LENGTH) for i in range(self.blocks_count - 1)] +
                                [Block(self.segment_id, (self.blocks_count - 1) * Block.BLOCK_LENGTH,
                                       segment_length % Block.BLOCK_LENGTH)])
-        logging.info(self.missing_blocks)
 
         self.tasks = {peer: set() for peer in peers}
         self.peers_strikes = {peer: 0 for peer in peers}
+        self.downloading_task = None
 
         for peer in peers:
             pub.subscribe(self.on_request_piece, peer.request_event)
             pub.subscribe(self.on_receive_block, peer.receive_event)
 
-    async def download_segment(self):
+    def download_segment(self):
+        self.downloading_task = asyncio.create_task(self._download_segment())
+
+    async def _download_segment(self):
         logging.info('Starting downloading segment')
 
         while len(self.downloaded_blocks) != self.blocks_count:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
-            if any(self.tasks) and any(self.missing_blocks) and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+            if any(self.tasks) and any(self.missing_blocks) and sum(
+                    len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
@@ -57,12 +73,14 @@ class SegmentDownloader:
 
         data = self.assemble_segment()
         if hashlib.sha1(data).digest() != self.torrent_data.segments_hash[self.segment_id]:
-            logging.error(f"Не удалось скачать сегмент №{self.segment_id} (хэш сегмента был неверным)")
-            return False
+            self.download_result = DownloadResult.FAILED
+            pub.sendMessage(self.downloading_stopped_event, downloader=self)
+            return
 
-        logging.error(f"Удалось скачать сегмент №{self.segment_id}!!!")
         self.torrent_stat.update_downloaded(len(data))
+        self.download_result = DownloadResult.COMPLETED
         await self.file_writer.write_segment(self.segment_id, data)
+        pub.sendMessage(self.downloading_stopped_event, downloader=self)
 
     def check_tasks_completion(self):
         for peer in self.tasks:
@@ -90,9 +108,8 @@ class SegmentDownloader:
         logging.info(f'request block from {peer.ip}')
         block.status = Block.Pending
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
-        logging.info(f'{block.offset, block.segment_id}')
         self.tasks[peer].add(block)
-        block.change_status_to_missing(delay=10)
+        block.change_status_to_missing(delay=1)
         await peer.send_message_to_peer(message.encode())
 
     def on_request_piece(self, request=None, peer=None):
@@ -115,11 +132,9 @@ class SegmentDownloader:
             logging.error('Не указан пир')
             return
 
-        logging.info(f'{request.index}, {request.byte_offset}')
         logging.info(f'received block from {peer.ip}')
 
         block = Block(request.index, request.byte_offset, len(request.data))
-        logging.info(len(self.tasks[peer]))
         if block not in self.tasks[peer]:
             logging.error("Получен блок, который не был запрошен")
             return
@@ -129,10 +144,21 @@ class SegmentDownloader:
         self.downloaded_blocks.add(block)
 
     def assemble_segment(self) -> bytes:
-        logging.info(f"Block lengths: {[len(block.data) for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)]}")
+        logging.info(
+            f"Block lengths: {[len(block.data) for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)]}")
         result = b''.join([block.data for block in sorted(self.downloaded_blocks, key=lambda block: block.offset)])
         return result
 
     def add_peer(self, peer):
         self.peers_strikes[peer] = 0
         self.tasks[peer] = set()
+
+        pub.subscribe(self.on_request_piece, peer.request_event)
+        pub.subscribe(self.on_receive_block, peer.receive_event)
+
+    @property
+    def peers(self):
+        return list(self.peers_strikes)
+
+    def close(self):
+        self.downloading_task.cancel()
