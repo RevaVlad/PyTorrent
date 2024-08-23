@@ -168,7 +168,6 @@ class PeerConnection:
             self.is_active = False
 
     async def run(self):
-        logging.info('running')
         self.peer_interested = True
         while self.is_active:
             await self.read_socket()
@@ -228,7 +227,7 @@ class PeerConnection:
         self.is_active = False
         if self.writer:
             self.writer.close()
-            await self.writer.wait_closed()
+            # await self.writer.wait_closed()
         if self.reader:
             self.reader = None
         self.is_active = False
