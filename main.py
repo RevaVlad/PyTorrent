@@ -41,4 +41,4 @@ if __name__ == '__main__':
     # torrent_file = TorrentData('torrent_files/test.torrent')
     # res = check_segment('torrent_files/test.torrent', 0)
     # logging.info(f"Expected segment len: {len(res)}")
-    asyncio.run(download_from_torrent_file("torrent_files/very_small.torrent"), debug=True)
+    asyncio.run(download_from_torrent_file("torrent_files/test.torrent"), debug=True)

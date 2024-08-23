@@ -36,8 +36,7 @@ class TorrentDownloader:
             if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id = await self.find_rarest_segment()
                 peers_info = self.available_segments[segment_id]
-                peers_count = peers_info[0]
-                peers = [peers_info[1][0]] if peers_count == 1 else peers_info[1][:self.MAX_PEER_COUNT]
+                peers = peers_info[1][:self.MAX_PEER_COUNT]
 
                 for peer in peers:
                     await self.remove_peer_from_available_segments(peer)
@@ -148,6 +147,7 @@ class TorrentDownloader:
                 async with self.available_segments_lock:
                     self.available_segments[i][0] -= 1
                     self.available_segments[i][1].remove(peer)
+                    self._segment_heap.push(self.available_segments[i][0], i)
 
     def replace_peer(self, segment_downloader: SegmentDownloader):
         other_peers = self.available_segments[segment_downloader.segment_id][1]
