@@ -8,7 +8,7 @@ from priority_queue import PriorityQueue
 
 class TorrentDownloader:
     MAX_PEER_COUNT = 50
-    MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 1
+    MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
     def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):
         self.torrent = torrent
@@ -33,6 +33,7 @@ class TorrentDownloader:
     async def download_torrent(self):
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
         while any(x[2] is False for x in self.available_segments):
+            logging.info([[peer.ip for peer in segment_info[1]] for segment_info in self.available_segments[:5]])
             if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id = await self.find_rarest_segment()
                 peers_info = self.available_segments[segment_id]
@@ -43,7 +44,7 @@ class TorrentDownloader:
 
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(.1)
 
     async def find_rarest_segment(self) -> int:
         logging.info("Searching for next rarest segment")
@@ -73,9 +74,10 @@ class TorrentDownloader:
         return downloader
 
     def on_download_end(self, downloader):
+        if downloader in self._segment_downloaders:
+            self._segment_downloaders.remove(downloader)
         logging.info(f"Segment {downloader.segment_id} download was canceled...")
         for peer in downloader.peers_strikes:
-            self.active_peers.append(peer)
             self.get_bitfield_from_peer(peer)
         if downloader.download_result == DownloadResult.COMPLETED:
             logging.info("Because it downloaded correctly!!!")
@@ -90,20 +92,18 @@ class TorrentDownloader:
                 result = True
                 while result:
                     result = await self.add_peer()
-            await asyncio.sleep(.5)
+            await asyncio.sleep(.1)
 
     async def try_get_new_peer(self) -> (str, int, bool):
         if len(self.active_peers) >= TorrentDownloader.MAX_PEER_COUNT:
             logging.error("Уже достигнуто максимальное кол-во пиров")
             return None, None, False
         peer_task = asyncio.create_task(self.peer_queue.get())
-        await asyncio.sleep(.5)
+        await asyncio.sleep(.1)
         try:
             (peer_ip, peer_port) = peer_task.result()
-            # logging.info(f"В очереди новый пир: ({peer_ip}, {peer_port})")
             return peer_ip, peer_port, True
         except (asyncio.InvalidStateError, asyncio.CancelledError):
-            # logging.error("В очереди нету пиров")
             return None, None, False
 
     async def add_peer(self):
@@ -135,7 +135,6 @@ class TorrentDownloader:
                 self.active_peers.remove(peer)
             await peer.close()
             return False
-        logging.info('Пир удачно подключился')
         return True
 
     def get_bitfield_from_peer(self, peer):
@@ -174,7 +173,8 @@ class TorrentDownloader:
         else:
             logging.info(
                 f"No new peers were provided for segment {segment_downloader.segment_id}, gonna try again later")
-            self._segment_downloaders.remove(segment_downloader)
+            if segment_downloader in self._segment_downloaders:
+                self._segment_downloaders.remove(segment_downloader)
 
     def unchoked_peers(self):
         for peer in self.active_peers:

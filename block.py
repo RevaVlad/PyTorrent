@@ -3,7 +3,7 @@ import logging
 
 
 class Block:
-    BLOCK_LENGTH = 16384
+    BLOCK_LENGTH = 214
 
     Missing = 0
     Pending = 1
@@ -37,7 +37,6 @@ class Block:
     async def _change_status_to_missing_coroutine(self, delay):
         await asyncio.sleep(delay)
         if self.status == Block.Pending:
-            logging.info(f"Changing block status to {Block.Missing}")
             self.status = Block.Missing
 
     def __hash__(self):
