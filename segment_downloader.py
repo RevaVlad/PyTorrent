@@ -19,7 +19,7 @@ class DownloadResult(Enum):
 
 class SegmentDownloader:
     MAX_STRIKES_PER_PEER = 5
-    MAX_PENDING_BLOCKS = 1000
+    MAX_PENDING_BLOCKS = 5
 
     PEER_DELETION_EVENT = 'peerDeleted'  # + segment_id, args: segment_downloader
     DOWNLOADING_STOPPED_EVENT = 'downloadingStopped'  # + segment_id, args: segment_downloader
@@ -63,8 +63,8 @@ class SegmentDownloader:
             self.check_tasks_completion()
             await self.check_peers_connection()
 
-            if any(self.tasks) and any(self.missing_blocks) and sum(
-                    len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS:
+            while (any(self.tasks) and any(self.missing_blocks)
+                   and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS):
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
@@ -105,11 +105,13 @@ class SegmentDownloader:
                 pub.sendMessage(self.peer_deletion_event, segment_downloader=self)
 
     async def request_block(self, block, peer):
-        block.status = Block.Pending
         message = Message.RequestsMessage(block.segment_id, block.offset, block.length)
-        self.tasks[peer].add(block)
-        block.change_status_to_missing(delay=2)
-        await peer.send_message_to_peer(message.encode())
+        if await peer.send_message_to_peer(message):
+            block.status = Block.Pending
+            self.tasks[peer].add(block)
+            block.change_status_to_missing(delay=2)
+        else:
+            self.missing_blocks.append(block)
 
     def on_request_piece(self, request=None, peer=None):
         if request is None:
@@ -120,7 +122,7 @@ class SegmentDownloader:
             piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
             loop = asyncio.get_event_loop()
             block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
-            peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block).encode())
+            asyncio.create_task(peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block)))
             self.torrent_stat.update_uploaded(block_length)
 
     def on_receive_block(self, request=None, peer=None):

@@ -68,13 +68,21 @@ class PeerConnection:
             return False
         return True
 
-    async def send_message_to_peer(self, message: bytes) -> None:
+    async def send_message_to_peer(self, message: Message.Message) -> bool:
+        if not self.handshake:
+            allowed_messages = (Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
+            if all(not isinstance(message, message_type) for message_type in allowed_messages):
+                return False
+
+        message = message.encode()
         try:
             self.writer.write(message)
             await self.writer.drain()
+            return True
         except OSError:
             self.is_active = False
             logging.error(f'Socket error. Невозможно отправить сообщение {message}')
+            return False
 
     # region Properties
     @property
@@ -101,7 +109,7 @@ class PeerConnection:
     def peer_interested(self, value: bool) -> None:
         self._peer_interested = value
         if value and self.choked:
-            asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage().encode()))
+            asyncio.create_task(self.send_message_to_peer(Message.UnChokedMessage()))
 
     @property
     def peer_choked(self) -> bool:
@@ -119,12 +127,12 @@ class PeerConnection:
     async def handle_got_piece(self, message) -> None:
         self.bitfield[message.piece_index] = True
         if self.peer_choked and not self.interested:
-            await self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
 
     async def handle_handshake(self):
         handshake = Message.HandshakeMessage(self.info_hash)
-        await self.send_message_to_peer(handshake.encode())
+        await self.send_message_to_peer(handshake)
         if self.is_active is False:
             logging.error('Произошла ошибка при handshake-e, пир неактивен')
             return False
@@ -134,7 +142,7 @@ class PeerConnection:
         self.bitfield |= message.segments
         pub.sendMessage(self.bitfield_update_event, peer=self)
         if self.peer_choked and not self.interested:
-            await self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
 
     def handle_piece_receive(self, piece_message) -> None:
@@ -171,7 +179,7 @@ class PeerConnection:
         self.peer_interested = True
 
         if not self.interested and self.bitfield.any(True):
-            await self.send_message_to_peer(Message.InterestedMessage().encode())
+            await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
 
         while self.is_active:

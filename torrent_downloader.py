@@ -33,7 +33,7 @@ class TorrentDownloader:
     async def download_torrent(self):
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
         while any(x[2] is False for x in self.available_segments):
-            logging.info([[peer.ip for peer in segment_info[1]] for segment_info in self.available_segments[:5]])
+            logging.info(f'Current peers: {len(self.active_peers)}')
             if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id = await self.find_rarest_segment()
                 peers_info = self.available_segments[segment_id]
@@ -87,29 +87,16 @@ class TorrentDownloader:
             self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
 
     async def peer_connection_task(self):
+        logging.info("Started peer connection task")
         while True:
             if len(self.active_peers) < TorrentDownloader.MAX_PEER_COUNT:
                 result = True
                 while result:
-                    result = await self.add_peer()
-            await asyncio.sleep(.1)
+                    result = await self._add_peer()
+            await asyncio.sleep(.01)
 
-    async def try_get_new_peer(self) -> (str, int, bool):
-        if len(self.active_peers) >= TorrentDownloader.MAX_PEER_COUNT:
-            logging.error("Уже достигнуто максимальное кол-во пиров")
-            return None, None, False
-        peer_task = asyncio.create_task(self.peer_queue.get())
-        await asyncio.sleep(.1)
-        try:
-            (peer_ip, peer_port) = peer_task.result()
-            return peer_ip, peer_port, True
-        except (asyncio.InvalidStateError, asyncio.CancelledError):
-            return None, None, False
-
-    async def add_peer(self):
-        (peer_ip, peer_port, operation_result) = await self.try_get_new_peer()
-        if not operation_result:
-            return False
+    async def _add_peer(self):
+        (peer_ip, peer_port) = await self.peer_queue.get()
         peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
         connect = await peer.connect()
         if connect:
