@@ -1,5 +1,9 @@
 import asyncio
 import logging
+
+import bitstring
+
+import Message
 from segment_downloader import SegmentDownloader, DownloadResult
 from peer_connection import PeerConnection
 from pubsub import pub
@@ -21,6 +25,7 @@ class TorrentDownloader:
 
         self._peer_connection_task = None
 
+        self.bitfield = bitstring.BitArray(self.torrent.total_segments)
         self.available_segments = [[0, [], False] for _ in range(torrent.total_segments)]
         self.available_segments_lock = asyncio.Lock()
 
@@ -82,9 +87,19 @@ class TorrentDownloader:
         if downloader.download_result == DownloadResult.COMPLETED:
             logging.info("Because it downloaded correctly!!!")
             self.available_segments[downloader.segment_id][2] = True
+            self.bitfield[downloader.segment_id] = True
+            # self.send_have_message_to_peers(downloader.segment_id)
         elif downloader.download_result == DownloadResult.FAILED:
             logging.error("Because it failed :(")
             self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
+
+    def send_have_message_to_peers(self, index):
+        asyncio.create_task(self._send_have_message_to_peers_task(index))
+
+    async def _send_have_message_to_peers_task(self, index, peer):
+        message = Message.HaveMessage(index)
+        for peer in self.active_peers:
+            await peer.send_message_to_peer(message)
 
     async def peer_connection_task(self):
         logging.info("Started peer connection task")
@@ -106,16 +121,24 @@ class TorrentDownloader:
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
                 pub.subscribe(self.get_have_message_from_peer, peer.have_message_event)
                 pub.subscribe(self.get_bitfield_from_peer, peer.bitfield_update_event)
+                # self.send_bitfield_to_peer(peer)
                 self.check_for_unchoked(peer)
                 return True
 
         logging.error('Возникли проблемы с установлением соединения с пиром')
         return False
 
-    def check_for_unchoked(self, peer):
-        _was_unchoked = asyncio.create_task(self._check_for_unchoked(peer, 10))
+    def send_bitfield_to_peer(self, peer):
+        asyncio.create_task(self._send_bitfield_to_peer_task(peer))
 
-    async def _check_for_unchoked(self, peer: PeerConnection, delay):
+    async def _send_bitfield_to_peer_task(self, peer:  PeerConnection):
+        message = Message.PeerSegmentsMessage(self.bitfield)
+        await peer.send_message_to_peer(message)
+
+    def check_for_unchoked(self, peer):
+        _was_unchoked = asyncio.create_task(self._check_for_unchoked_task(peer, 10))
+
+    async def _check_for_unchoked_task(self, peer: PeerConnection, delay):
         await asyncio.sleep(delay)
         if peer.peer_choked is True:
             logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
