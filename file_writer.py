@@ -1,33 +1,66 @@
 import logging
 import os
 import shutil
+import random
 from pathlib import Path
 import asyncio
+from collections import deque
 
 
 class AsyncFile:
 
-    def __init__(self, actual_file):
-        self.actual_file = actual_file
+    def __init__(self, file_location: Path):
+        self.file_location = file_location
+        self._actual_file = None
         self.lock = asyncio.Lock()
 
+    def __enter__(self):
+        self.open()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        if exc_type is not None:
+            logging.error(
+                f'Got exception of type - "{exc_type}", with value - "{exc_val}" while working with file {self.file_location.name}')
+
+    def open(self):
+        self._actual_file = self.file_location.open('rb+')
+
     def close(self):
-        self.actual_file.close()
+        if not self._is_opened:
+            logging.error("Tried closing file, that is not open")
+            return
+        self._actual_file.close()
+        self._actual_file = None
 
     async def write(self, data: bytes, position):
+        if not self._is_opened:
+            logging.error("Tried writing in closed file")
+            return
+
         async with self.lock:
-            self.actual_file.seek(position)
-            self.actual_file.write(data)
+            self._actual_file.seek(position)
+            self._actual_file.write(data)
 
     async def read(self, position, size):
+        if not self._is_opened:
+            logging.error("Tried reading from closed file")
+            return
+
         async with self.lock:
-            self.actual_file.seek(position)
-            data = self.actual_file.read(size)
+            self._actual_file.seek(position)
+            data = self._actual_file.read(size)
         return data
+
+    @property
+    def _is_opened(self):
+        return self._actual_file is not None
 
 
 class FileWriter:
-    BUFFER_LENGTH = 2 ** 13
+    WRITE_BUFFER_LENGTH = 2 ** 13
+    FILES_BUFFER_LENGTH = 10
 
     def __init__(self, torrent, destination: Path):
         self.destination = destination
@@ -36,6 +69,8 @@ class FileWriter:
         self.segment_length = torrent.segment_length
         self.file_pref_lengths = [0]
         self.files = []
+
+        self.files_buffer = deque(maxlen=FileWriter.FILES_BUFFER_LENGTH)
 
     def __enter__(self):
         common_path = self.destination / self.torrent.torrent_name if len(self.torrent.files) != 1 else self.destination
@@ -49,27 +84,25 @@ class FileWriter:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for file in self.files:
-            file.close()
         if exc_type is not None:
             logging.error(f'Got exception of type - "{exc_type}", with value - "{exc_val}" while writing files')
 
-    def _prepare_file(self, file_path, file_length):
+    def _prepare_file(self, file_path: Path, file_length):
         directory_path = file_path.parent
 
         if not directory_path.exists():
             directory_path.mkdir(parents=True, exist_ok=True)
-        if file_path.exists():
-            return AsyncFile(file_path.open('rb+'))
+        if file_path.exists() and file_path.stat().st_size == file_length:
+            return AsyncFile(file_path)
         file_path.open('w').close()
-        file = file_path.open('rb+')
 
-        remaining_length = file_length
-        while remaining_length > 0:
-            file.write(b'\x00' * min(remaining_length, self.BUFFER_LENGTH))
-            remaining_length -= self.BUFFER_LENGTH
+        with file_path.open('rb+') as file:
+            remaining_length = file_length
+            while remaining_length > 0:
+                file.write(b'\x00' * min(remaining_length, self.WRITE_BUFFER_LENGTH))
+                remaining_length -= self.WRITE_BUFFER_LENGTH
 
-        return AsyncFile(file)
+        return AsyncFile(file_path)
 
     def find_segment_in_files(self, segment_id):
         segment_length = self.torrent.segment_length
@@ -91,33 +124,42 @@ class FileWriter:
 
     async def write_segment(self, segment_id, data: bytes):
         for file, writing_start, size in self.find_segment_in_files(segment_id):
-            await file.write(data[:size], writing_start)
-            data = data[size:]
-            if not data:
-                break
+            with file:
+                await file.write(data[:size], writing_start)
+                data = data[size:]
+                if not data:
+                    break
 
     async def read_segment(self, segment_id):
         result = b''
         for file, reading_start, size in self.find_segment_in_files(segment_id):
-            result += await file.read(reading_start, size)
-            if len(result) == self.torrent.segment_length:
-                break
+            with file:
+                result += await file.read(reading_start, size)
+                if len(result) == self.torrent.segment_length:
+                    break
         return result
 
 
 class FakeTorrent:
-    files = [{'path': 'one.txt', 'length': 1},
-             {'path': 'folder/two.txt', 'length': 1},
-             {'path': 'folder/three.txt', 'length': 6}]
+    files = [{'path': ['one.txt'], 'length': 2},
+             {'path': ['folder/two.txt'], 'length': 1},
+             {'path': ['folder/three.txt'], 'length': 6}]
     segment_length = 3
-    name = 'test'
+    torrent_name = 'basic'
+
+
+class FakeTorrentManyFiles:
+    files = [{'path': [f'{i:04d}.txt'], 'length': 2} for i in range(10_000)]
+    segment_length = 5
+    torrent_name = '10k_files'
 
 
 if __name__ == '__main__':
-    async def main():
+    '''
+    async def basic():
         fake_torrent = FakeTorrent()
 
-        with FileWriter(fake_torrent) as file_writer:
+        with FileWriter(fake_torrent, Path('./downloaded')) as file_writer:
             await asyncio.gather(file_writer.write_segment(0, b'111'),
                                  file_writer.write_segment(1, b'222'),
                                  file_writer.write_segment(2, b'333'))
@@ -125,14 +167,28 @@ if __name__ == '__main__':
             results = await asyncio.gather(file_writer.read_segment(0),
                                            file_writer.read_segment(1),
                                            file_writer.read_segment(2))
-            print(results)
 
-        for dir_path, dir_names, filenames in os.walk('test'):
+        for dir_path, dir_names, filenames in os.walk('./downloaded/' + fake_torrent.torrent_name):
             for file in filenames:
                 data = open(dir_path + '/' + file, 'rb').read()
                 print(f"{file} - {data}, length - {len(data)}")
 
-        shutil.rmtree('test')
+        shutil.rmtree('./downloaded/' + fake_torrent.torrent_name)
+    '''
 
+    async def many_files():
+        torrent = FakeTorrentManyFiles()
 
-    asyncio.run(main())
+        with FileWriter(torrent, Path('./downloaded')) as fw:
+            requests = [fw.write_segment(segment_id, bytes(str(segment_id)[0] * 5, encoding='utf-8'))
+                        for segment_id in range(4000)]
+            random.shuffle(requests)
+            await asyncio.gather(*requests)
+        with FileWriter(torrent, Path('./downloaded')) as fw:
+            for segment_id in range(4000):
+                data = await fw.read_segment(segment_id)
+                assert data == bytes(str(segment_id)[0] * 5, encoding='utf-8')
+
+        shutil.rmtree('./downloaded/' + torrent.torrent_name)
+
+    asyncio.run(many_files())
