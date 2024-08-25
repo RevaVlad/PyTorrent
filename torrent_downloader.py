@@ -4,6 +4,7 @@ import logging
 import bitstring
 
 import Message
+import hashlib
 from segment_downloader import SegmentDownloader, DownloadResult
 from peer_connection import PeerConnection
 from pubsub import pub
@@ -36,6 +37,7 @@ class TorrentDownloader:
         self.bitfield_active = False
 
     async def download_torrent(self):
+        await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
         while any(x[2] is False for x in self.available_segments):
             logging.info(f'Current peers: {len(self.active_peers)}')
@@ -50,6 +52,15 @@ class TorrentDownloader:
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
 
             await asyncio.sleep(.1)
+
+    async def get_downloaded_segments(self):
+        for i in range(self.torrent.total_segments):
+            data = await self.file_writer.read_segment(i)
+            if hashlib.sha1(data).digest() == self.torrent.segments_hash[i]:
+                self.available_segments[i][2] = True
+                self.bitfield[i] = True
+            del data
+        logging.info(self.bitfield.bin)
 
     async def find_rarest_segment(self) -> int:
         logging.info("Searching for next rarest segment")
