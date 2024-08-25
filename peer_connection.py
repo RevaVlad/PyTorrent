@@ -11,9 +11,10 @@ from struct import unpack
 
 
 class PeerConnection:
-    REQUEST_PIECE_EVENT = 'requestPiece'      # + ip, args: message, peer
-    RECEIVE_BLOCK_EVENT = 'sendPiece'         # + ip, args: request, peer
+    REQUEST_PIECE_EVENT = 'requestPiece'  # + ip, args: message, peer
+    RECEIVE_BLOCK_EVENT = 'sendPiece'  # + ip, args: request, peer
     BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip, args: peer
+    HAVE_MESSAGE_EVENT = 'hasMessage'  # + ip, args: index, peer
 
     def __init__(self, ip, number_of_pieces: int, info_hash, port=6881):
         self.ip = ip
@@ -24,6 +25,7 @@ class PeerConnection:
         self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
         self.request_event = PeerConnection.REQUEST_PIECE_EVENT + ip
         self.bitfield_update_event = PeerConnection.BITFIELD_UPDATE_EVENT + ip
+        self.have_message_event = PeerConnection.HAVE_MESSAGE_EVENT + ip
 
         bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
         self.bitfield = bitstring.BitArray(bitfield_length)
@@ -70,7 +72,8 @@ class PeerConnection:
 
     async def send_message_to_peer(self, message: Message.Message) -> bool:
         if not self.handshake:
-            allowed_messages = (Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
+            allowed_messages = (
+                Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage, Message.HaveMessage)
             if all(not isinstance(message, message_type) for message_type in allowed_messages):
                 return False
 
@@ -126,6 +129,7 @@ class PeerConnection:
 
     async def handle_got_piece(self, message) -> None:
         self.bitfield[message.piece_index] = True
+        pub.sendMessage(self.have_message_event, index=message.piece_index, peer=self)
         if self.peer_choked and not self.interested:
             await self.send_message_to_peer(Message.InterestedMessage())
             self.interested = True
@@ -217,6 +221,7 @@ class PeerConnection:
             case Message.NotInterestedMessage():
                 self.peer_interested = False
             case Message.HaveMessage():
+                logging.info('got have message')
                 await self.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
                 logging.info('got peer segments message')

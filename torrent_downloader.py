@@ -104,6 +104,7 @@ class TorrentDownloader:
                 logging.info(f"Connected new peer: ({peer_ip}, {peer_port})")
                 self.active_peers.append(peer)
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
+                pub.subscribe(self.get_have_message_from_peer, peer.have_message_event)
                 pub.subscribe(self.get_bitfield_from_peer, peer.bitfield_update_event)
                 self.check_for_unchoked(peer)
                 return True
@@ -135,6 +136,16 @@ class TorrentDownloader:
                     self.available_segments[i][1].append(peer)
                     self._segment_heap.push(self.available_segments[i][0], i)
             self.bitfield_active = True
+
+    def get_have_message_from_peer(self, peer, index):
+        asyncio.create_task(self._get_have_message_from_peer_task(peer, index))
+
+    async def _get_have_message_from_peer_task(self, peer, index):
+        async with self.available_segments_lock:
+            self.available_segments[index][0] += 1
+            self.available_segments[index][1].append(peer)
+            self._segment_heap.push(self.available_segments[index][0], index)
+        self.bitfield_active = True
 
     async def block_peer(self, peer):
         if peer in self.active_peers:
