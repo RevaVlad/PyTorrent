@@ -99,7 +99,7 @@ class TorrentDownloader:
             logging.info("Because it downloaded correctly!!!")
             self.available_segments[downloader.segment_id][2] = True
             self.bitfield[downloader.segment_id] = True
-            # self.send_have_message_to_peers(downloader.segment_id)
+            self.send_have_message_to_peers(downloader.segment_id)
         elif downloader.download_result == DownloadResult.FAILED:
             logging.error("Because it failed :(")
             self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
@@ -107,7 +107,7 @@ class TorrentDownloader:
     def send_have_message_to_peers(self, index):
         asyncio.create_task(self._send_have_message_to_peers_task(index))
 
-    async def _send_have_message_to_peers_task(self, index, peer):
+    async def _send_have_message_to_peers_task(self, index):
         message = Message.HaveMessage(index)
         for peer in self.active_peers:
             await peer.send_message_to_peer(message)
@@ -132,7 +132,8 @@ class TorrentDownloader:
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
                 pub.subscribe(self.get_have_message_from_peer, peer.have_message_event)
                 pub.subscribe(self.get_bitfield_from_peer, peer.bitfield_update_event)
-                # self.send_bitfield_to_peer(peer)
+                pub.subscribe(self.on_request_piece, peer.request_event)
+                self.send_bitfield_to_peer(peer)
                 self.check_for_unchoked(peer)
                 return True
 
@@ -145,6 +146,18 @@ class TorrentDownloader:
     async def _send_bitfield_to_peer_task(self, peer:  PeerConnection):
         message = Message.PeerSegmentsMessage(self.bitfield)
         await peer.send_message_to_peer(message)
+
+    def on_request_piece(self, request=None, peer=None):
+        if request is None:
+            logging.error('Тело запроса пусто')
+        elif peer is None:
+            logging.error('Не указан пир, запросивший сегмент')
+        else:
+            logging.info('request block')
+            piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
+            loop = asyncio.get_event_loop()
+            block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
+            asyncio.create_task(peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block)))
 
     def check_for_unchoked(self, peer):
         _was_unchoked = asyncio.create_task(self._check_for_unchoked_task(peer, 10))

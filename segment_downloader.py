@@ -50,7 +50,6 @@ class SegmentDownloader:
         self.downloading_task = None
 
         for peer in peers:
-            pub.subscribe(self.on_request_piece, peer.request_event)
             pub.subscribe(self.on_receive_block, peer.receive_event)
 
     def download_segment(self):
@@ -113,18 +112,6 @@ class SegmentDownloader:
         else:
             self.missing_blocks.append(block)
 
-    def on_request_piece(self, request=None, peer=None):
-        if request is None:
-            logging.error('Тело запроса пусто')
-        elif peer is None:
-            logging.error('Не указан пир, запросивший сегмент')
-        else:
-            piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
-            loop = asyncio.get_event_loop()
-            block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
-            asyncio.create_task(peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block)))
-            self.torrent_stat.update_uploaded(block_length)
-
     def on_receive_block(self, request=None, peer=None):
         if not request:
             logging.error('Сообщение пусто')
@@ -149,7 +136,6 @@ class SegmentDownloader:
         self.peers_strikes[peer] = 0
         self.tasks[peer] = set()
 
-        pub.subscribe(self.on_request_piece, peer.request_event)
         pub.subscribe(self.on_receive_block, peer.receive_event)
 
     @property
