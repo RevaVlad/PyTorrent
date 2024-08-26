@@ -9,6 +9,10 @@ from torrent_downloader import TorrentDownloader
 from file_writer import FileWriter
 from pathlib import Path
 
+async def tests(torrent_downloader):
+    while True:
+        logging.info(f"Active peers: {len(torrent_downloader.active_peers)}, {[x[0] for x in torrent_downloader.available_segments[:10]]}")
+        await asyncio.sleep(3)
 
 async def download_from_torrent_file(filename):
     torrent_file = TorrentData(filename)
@@ -24,6 +28,7 @@ async def download_from_torrent_file(filename):
                                                    file_writer,
                                                    torrent_statistics,
                                                    trackers_manager.available_peers)
+            asyncio.create_task(tests(torrent_downloader))
             await torrent_downloader.download_torrent()
             torrent_downloader.close()
 
@@ -41,4 +46,4 @@ if __name__ == '__main__':
     # torrent_file = TorrentData('torrent_files/test.torrent')
     # res = check_segment('torrent_files/test.torrent', 0)
     # logging.info(f"Expected segment len: {len(res)}")
-    asyncio.run(download_from_torrent_file("torrent_files/HackMiami-Analysis_of_the_Cryptocurrency_Marketplace.pdf-daaa86689c42e78c4111b74984d5036a426f6cf6.torrent"), debug=True)
+    asyncio.run(download_from_torrent_file("torrent_files/file.torrent"), debug=True)

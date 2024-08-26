@@ -39,19 +39,20 @@ class TorrentDownloader:
     async def download_torrent(self):
         await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
-        while any(x[2] is False for x in self.available_segments):
-            logging.info(f'Current peers: {len(self.active_peers)}')
+        while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
+            await asyncio.sleep(.1)
+
             if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
-                segment_id = await self.find_rarest_segment()
+                segment_id, finding_result = await self.try_find_rarest_segment()
+                if not finding_result:
+                    continue
                 peers_info = self.available_segments[segment_id]
-                peers = peers_info[1][:self.MAX_PEER_COUNT]
+                peers = peers_info[1][0]
 
                 for peer in peers:
                     await self.remove_peer_from_available_segments(peer)
 
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
-
-            await asyncio.sleep(.1)
 
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
@@ -62,20 +63,17 @@ class TorrentDownloader:
             del data
         logging.info(self.bitfield.bin)
 
-    async def find_rarest_segment(self) -> int:
-        logging.info("Searching for next rarest segment")
-        while True:
-            if not self._segment_heap:
-                await asyncio.sleep(0.1)
-                continue
+    async def try_find_rarest_segment(self) -> (int, bool):
+        if not self._segment_heap:
+            return None, False
 
-            count, rarest_index = self._segment_heap.pop()
-            if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
-                logging.info(f"The next segment in queue: {rarest_index}")
-                return rarest_index
-            else:
-                self._segment_heap.push(count, rarest_index)
-                await asyncio.sleep(0.1)
+        count, rarest_index = self._segment_heap.pop()
+        if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
+            logging.info(f"Found not yet downloaded segment! Next segment is: {rarest_index}")
+            return rarest_index, True
+        else:
+            self._segment_heap.push(count, rarest_index)
+            return None, False
 
     def start_segment_download(self, segment_id, peers) -> SegmentDownloader:
         self.available_segments[segment_id][2] = True
@@ -91,11 +89,7 @@ class TorrentDownloader:
         return downloader
 
     def on_download_end(self, downloader):
-        if downloader in self._segment_downloaders:
-            self._segment_downloaders.remove(downloader)
         logging.info(f"Segment {downloader.segment_id} download was canceled...")
-        for peer in downloader.peers_strikes:
-            self.get_bitfield_from_peer(peer)
         if downloader.download_result == DownloadResult.COMPLETED:
             logging.info("Because it downloaded correctly!!!")
             self.bitfield[downloader.segment_id] = True
@@ -104,6 +98,12 @@ class TorrentDownloader:
             self.available_segments[downloader.segment_id][2] = False
             logging.error("Because it failed :(")
             self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
+
+        if downloader in self._segment_downloaders:
+            self._segment_downloaders.remove(downloader)
+            logging.info(f"Removing downloader: {downloader}")
+        for peer in downloader.peers_strikes:
+            self.get_bitfield_from_peer(peer)
 
     def send_have_message_to_peers(self, index):
         asyncio.create_task(self._send_have_message_to_peers_task(index))
