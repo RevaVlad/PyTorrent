@@ -54,6 +54,8 @@ class TorrentDownloader:
 
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
 
+            await asyncio.sleep(.1)
+
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
             data = await self.file_writer.read_segment(i)
