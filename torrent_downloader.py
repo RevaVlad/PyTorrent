@@ -78,6 +78,7 @@ class TorrentDownloader:
                 await asyncio.sleep(0.1)
 
     def start_segment_download(self, segment_id, peers) -> SegmentDownloader:
+        self.available_segments[segment_id][2] = True
         downloader = SegmentDownloader(segment_id=segment_id, torrent_data=self.torrent,
                                        file_writer=self.file_writer,
                                        torrent_statistics=self.torrent_statistics,
@@ -97,10 +98,10 @@ class TorrentDownloader:
             self.get_bitfield_from_peer(peer)
         if downloader.download_result == DownloadResult.COMPLETED:
             logging.info("Because it downloaded correctly!!!")
-            self.available_segments[downloader.segment_id][2] = True
             self.bitfield[downloader.segment_id] = True
             self.send_have_message_to_peers(downloader.segment_id)
         elif downloader.download_result == DownloadResult.FAILED:
+            self.available_segments[downloader.segment_id][2] = False
             logging.error("Because it failed :(")
             self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
 

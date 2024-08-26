@@ -82,9 +82,9 @@ class PeerConnection:
             self.writer.write(message)
             await self.writer.drain()
             return True
-        except OSError:
+        except OSError as e:
             self.is_active = False
-            logging.error(f'Socket error. Невозможно отправить сообщение {message}')
+            logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
             return False
 
     # region Properties
