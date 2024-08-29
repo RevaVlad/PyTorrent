@@ -1,5 +1,5 @@
 import logging
-import os
+import hashlib
 import shutil
 import random
 from pathlib import Path
@@ -144,6 +144,12 @@ class FileWriter:
             if len(result) == self.torrent.segment_length:
                 break
         return result
+
+    async def check_segment_download(self, index: int) -> bool:
+        data = await self.read_segment(index)
+        if hashlib.sha1(data).digest() != self.torrent.segments_hash[index]:
+            return False
+        return True
 
     def _shift_files_buffer(self, new_file):
         if new_file in self.files_buffer:

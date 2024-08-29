@@ -4,7 +4,6 @@ import logging
 import bitstring
 
 import Message
-import hashlib
 from segment_downloader import SegmentDownloader, DownloadResult
 from peer_connection import PeerConnection
 from pubsub import pub
@@ -26,7 +25,6 @@ class TorrentDownloader:
 
         self._peer_connection_task = None
 
-        self.bitfield = bitstring.BitArray(self.torrent.total_segments)
         self.available_segments = [[0, [], False] for _ in range(torrent.total_segments)]
         self.available_segments_lock = asyncio.Lock()
 
@@ -58,12 +56,10 @@ class TorrentDownloader:
 
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
-            data = await self.file_writer.read_segment(i)
-            if hashlib.sha1(data).digest() == self.torrent.segments_hash[i]:
+            if await self.file_writer.check_segment_download(i):
                 self.available_segments[i][2] = True
-                self.bitfield[i] = True
-            del data
-        logging.info(self.bitfield.bin)
+                self.torrent_statistics.update_bitfield(i, True)
+        logging.info(self.torrent_statistics.bitfield.bin)
 
     async def try_find_rarest_segment(self) -> (int, bool):
         if not self._segment_heap:
@@ -94,7 +90,7 @@ class TorrentDownloader:
         logging.info(f"Segment {downloader.segment_id} download was canceled...")
         if downloader.download_result == DownloadResult.COMPLETED:
             logging.info("Because it downloaded correctly!!!")
-            self.bitfield[downloader.segment_id] = True
+            self.torrent_statistics.update_bitfield(downloader.segment_id, True)
             self.send_have_message_to_peers(downloader.segment_id)
         elif downloader.download_result == DownloadResult.FAILED:
             self.available_segments[downloader.segment_id][2] = False
@@ -147,7 +143,7 @@ class TorrentDownloader:
         asyncio.create_task(self._send_bitfield_to_peer_task(peer))
 
     async def _send_bitfield_to_peer_task(self, peer:  PeerConnection):
-        message = Message.PeerSegmentsMessage(self.bitfield)
+        message = Message.PeerSegmentsMessage(self.torrent_statistics.bitfield)
         await peer.send_message_to_peer(message)
 
     def on_request_piece(self, request=None, peer=None):

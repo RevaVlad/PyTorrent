@@ -16,7 +16,7 @@ async def tests(torrent_downloader):
 
 async def download_from_torrent_file(filename):
     torrent_file = TorrentData(filename)
-    torrent_statistics = TorrentStatistics(torrent_file.total_length)
+    torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 

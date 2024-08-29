@@ -1,9 +1,13 @@
+import bitstring
+
+
 class TorrentStatistics:
 
-    def __init__(self, left, downloaded=0, uploaded=0):
+    def __init__(self, left, total_segments, downloaded=0, uploaded=0):
         self._downloaded = downloaded
         self._uploaded = uploaded
         self._left = left
+        self._bitfield = bitstring.BitArray(total_segments)
 
     def update_downloaded(self, size):
         self._downloaded += size
@@ -11,6 +15,9 @@ class TorrentStatistics:
 
     def update_uploaded(self, size):
         self._uploaded += size
+
+    def update_bitfield(self, index: int, value: bool):
+        self._bitfield[index] = value
 
     @property
     def downloaded(self):
@@ -23,3 +30,7 @@ class TorrentStatistics:
     @property
     def uploaded(self):
         return self._uploaded
+
+    @property
+    def bitfield(self):
+        return self._bitfield
