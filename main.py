@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import pickle
+import sys
+import aioconsole
 import time
 
 from parser import TorrentData
@@ -9,18 +12,21 @@ from torrent_downloader import TorrentDownloader
 from file_writer import FileWriter
 from pathlib import Path
 
+
 async def tests(torrent_downloader):
     while True:
-        logging.info(f"Active peers: {len(torrent_downloader.active_peers)}, {[x[0] for x in torrent_downloader.available_segments[:10]]}")
+        # logging.info( f"Active peers: {len(torrent_downloader.active_peers)}, {[x[0] for x in
+        # torrent_downloader.available_segments[:10]]}")
         await asyncio.sleep(3)
 
-async def download_from_torrent_file(filename):
+
+async def download_from_torrent_file(filename, destination: Path):
     torrent_file = TorrentData(filename)
     torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
-    with FileWriter(torrent_file, destination=Path('./downloaded')) as file_writer:
+    with FileWriter(torrent_file, destination=destination) as file_writer:
         async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
             logging.info("Created all objects")
             trackers_manager.create_peers_update_task()
@@ -35,6 +41,46 @@ async def download_from_torrent_file(filename):
     logging.info(f"Download completed!!!")
 
 
+async def main_loop():
+    torrents = get_previous_torrents('current_torrents.pickle')
+    torrent_tasks = [asyncio.create_task(download_from_torrent_file(location, destination)) for (location, destination)
+                     in torrents]
+
+    try:
+        while True:
+            logging.info(f"Active torrents: {torrents}")
+            location, destination = await get_input_from_console()
+            torrents.append((location, destination))
+            torrent_tasks.append(asyncio.create_task(download_from_torrent_file(location, destination)))
+    except asyncio.CancelledError:
+        save_current_torrents('current_torrents.pickle', torrents)
+
+
+async def get_input_from_console():
+    user_input = await aioconsole.ainput("Введите команду (download <Path_to_torrent> <Destination>): ")
+    data = user_input.split()
+    if data[0] == 'download':
+        return data[1], Path(data[2])
+
+
+def get_previous_torrents(pickle_file_name):
+    project_directory = Path(sys.path[0])
+    if (project_directory / pickle_file_name).exists():
+        with open(project_directory / pickle_file_name, 'rb') as f:
+            torrents = pickle.load(f)
+        return torrents
+    return []
+
+
+def save_current_torrents(pickle_file_name, torrents):
+    project_directory = Path(sys.path[0])
+    location = project_directory / pickle_file_name
+    if not (location).exists():
+        location.open('w').close()
+    with open(location, 'wb') as f:
+        pickle.dump(torrents, f)
+
+
 def check_segment(filename, segment_id):
     torrent_file = TorrentData(filename)
     with FileWriter(torrent_file, destination=Path('./downloaded')) as file_writer:
@@ -43,7 +89,5 @@ def check_segment(filename, segment_id):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    # torrent_file = TorrentData('torrent_files/test.torrent')
-    # res = check_segment('torrent_files/test.torrent', 0)
-    # logging.info(f"Expected segment len: {len(res)}")
-    asyncio.run(download_from_torrent_file("torrent_files/file.torrent"), debug=True)
+    # asyncio.run(download_from_torrent_file("torrent_files/file.torrent", Path('./downloaded')), debug=True)
+    asyncio.run(main_loop())
