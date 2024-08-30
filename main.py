@@ -5,6 +5,7 @@ import sys
 import aioconsole
 import time
 
+from progress.bar import IncrementalBar
 from parser import TorrentData
 from torrent_statistics import TorrentStatistics
 from tracker_manager import TrackerManager
@@ -20,11 +21,27 @@ async def tests(torrent_downloader):
         await asyncio.sleep(3)
 
 
+async def update_progress_bar(bar, torrent_stat: TorrentStatistics):
+    progress = 0
+    while not bar.remaining == 0:
+        for i in range(progress, torrent_stat.downloaded, 100):
+            bar.index = i
+            bar.update()
+            await asyncio.sleep(.001)
+        progress = bar.index = torrent_stat.downloaded
+        bar.update()
+        await asyncio.sleep(1)
+    bar.finish()
+
+
 async def download_from_torrent_file(filename, destination: Path):
     torrent_file = TorrentData(filename)
     torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
+
+    progress_bar = IncrementalBar(f'{Path(filename).name} progress', max=torrent_statistics.left)
+    bar_task = asyncio.create_task(update_progress_bar(progress_bar, torrent_statistics))
 
     with FileWriter(torrent_file, destination=destination) as file_writer:
         async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
@@ -88,6 +105,7 @@ def check_segment(filename, segment_id):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.FATAL)
+    # logging.basicConfig(level=logging.INFO)
     # asyncio.run(download_from_torrent_file("torrent_files/file.torrent", Path('./downloaded')), debug=True)
     asyncio.run(main_loop())

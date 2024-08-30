@@ -57,6 +57,13 @@ class TorrentDownloader:
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
             if await self.file_writer.check_segment_download(i):
+
+                # TODO: Потому что иначе статистика не обновляется, потому что надо было перенести этот метод в
+                #  file_writer!!!
+                segment_length = self.torrent.segment_length if i != self.torrent.total_segments - 1 \
+                    else self.torrent.total_length % self.torrent.segment_length
+                self.torrent_statistics.update_downloaded(segment_length)
+
                 self.available_segments[i][2] = True
                 self.torrent_statistics.update_bitfield(i, True)
         logging.info(self.torrent_statistics.bitfield.bin)
