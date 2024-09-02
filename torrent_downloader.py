@@ -116,6 +116,7 @@ class TorrentDownloader:
     async def _send_have_message_to_peers_task(self, index):
         message = Message.HaveMessage(index)
         for peer in self.active_peers:
+
             await peer.send_message_to_peer(message)
 
     async def peer_connection_task(self):

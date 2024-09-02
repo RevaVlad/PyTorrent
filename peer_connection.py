@@ -73,7 +73,7 @@ class PeerConnection:
     async def send_message_to_peer(self, message: Message.Message) -> bool:
         if not self.handshake:
             allowed_messages = (
-                Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage, Message.HaveMessage)
+                Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
             if all(not isinstance(message, message_type) for message_type in allowed_messages):
                 return False
 

@@ -108,7 +108,7 @@ class SegmentDownloader:
         if await peer.send_message_to_peer(message):
             block.status = Block.Pending
             self.tasks[peer].add(block)
-            block.change_status_to_missing(delay=2)
+            block.change_status_to_missing(delay=20)
         else:
             self.missing_blocks.append(block)
 
