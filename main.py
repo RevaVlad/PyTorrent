@@ -12,13 +12,7 @@ from tracker_manager import TrackerManager
 from torrent_downloader import TorrentDownloader
 from file_writer import FileWriter
 from pathlib import Path
-
-
-async def tests(torrent_downloader):
-    while True:
-        # logging.info( f"Active peers: {len(torrent_downloader.active_peers)}, {[x[0] for x in
-        # torrent_downloader.available_segments[:10]]}")
-        await asyncio.sleep(3)
+from requests_receiver import RequestsReceiver
 
 
 async def update_progress_bar(bar, torrent_stat: TorrentStatistics):
@@ -33,6 +27,12 @@ async def update_progress_bar(bar, torrent_stat: TorrentStatistics):
         await asyncio.sleep(1)
     bar.finish()
 
+async def zaglushka(queue_source, queue_target):
+    while True:
+        await queue_source.get()
+        await queue_target.put()
+        await asyncio.sleep(.01)
+
 
 async def download_from_torrent_file(filename, destination: Path):
     torrent_file = TorrentData(filename)
@@ -43,18 +43,27 @@ async def download_from_torrent_file(filename, destination: Path):
     progress_bar = IncrementalBar(f'{Path(filename).name} progress', max=torrent_statistics.left)
     bar_task = asyncio.create_task(update_progress_bar(progress_bar, torrent_statistics))
 
+    requests_receiver = RequestsReceiver(torrent_file)
+
     with FileWriter(torrent_file, destination=destination) as file_writer:
-        async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
+        # async with TrackerManager(torrent_file, torrent_statistics, requests_receiver.port) as trackers_manager:
+            logging.info(f"Port: {requests_receiver.port}")
+
+            asyncio.create_task(requests_receiver.run_server())
+            # asyncio.create_task(zaglushka(requests_receiver.available_peers, trackers_manager.available_peers))
+
             logging.info("Created all objects")
-            trackers_manager.create_peers_update_task()
+            # trackers_manager.create_peers_update_task()
             torrent_downloader = TorrentDownloader(torrent_file,
                                                    file_writer,
                                                    torrent_statistics,
-                                                   trackers_manager.available_peers)
-            asyncio.create_task(tests(torrent_downloader))
+                                                   requests_receiver.available_peers)
             await torrent_downloader.download_torrent()
+            while True:
+                await asyncio.sleep(.1)
             torrent_downloader.close()
 
+    await requests_receiver.close()
     logging.info(f"Download completed!!!")
 
 
@@ -105,7 +114,7 @@ def check_segment(filename, segment_id):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.FATAL)
-    # logging.basicConfig(level=logging.INFO)
-    # asyncio.run(download_from_torrent_file("torrent_files/file.torrent", Path('./downloaded')), debug=True)
-    asyncio.run(main_loop())
+    # logging.basicConfig(level=logging.FATAL)
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(download_from_torrent_file("torrent_files/test.torrent", Path('./downloaded')), debug=True)
+    # asyncio.run(main_loop())
