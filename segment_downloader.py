@@ -56,7 +56,7 @@ class SegmentDownloader:
         self.downloading_task = asyncio.create_task(self._download_segment())
 
     async def _download_segment(self):
-        logging.info('Starting downloading segment')
+        # logging.info('Starting downloading segment')
 
         while len(self.downloaded_blocks) != self.blocks_count:
             self.check_tasks_completion()
@@ -85,7 +85,7 @@ class SegmentDownloader:
         for peer in self.tasks:
             for block in self.tasks[peer].copy():
                 if block.status == Block.Missing:
-                    logging.info(f"Striked peer: {peer.ip}")
+                    # logging.info(f"Striked peer: {peer.ip}")
                     self.peers_strikes[peer] += 1
                     self.tasks[peer].remove(block)
                     self.missing_blocks.append(block)
@@ -111,6 +111,7 @@ class SegmentDownloader:
             block.change_status_to_missing(delay=2)
         else:
             self.missing_blocks.append(block)
+            self.peers_strikes[peer] += 1
 
     def on_receive_block(self, request=None, peer=None):
         if not request:
@@ -121,8 +122,8 @@ class SegmentDownloader:
             return
 
         block = Block(request.index, request.byte_offset, len(request.data))
-        if block not in self.tasks[peer]:
-            logging.error("Получен блок, который не был запрошен")
+        if peer not in self.tasks or block not in self.tasks[peer]:
+            # logging.error("Получен блок, который не был запрошен")
             return
         self.tasks[peer].remove(block)
         block.data = request.data

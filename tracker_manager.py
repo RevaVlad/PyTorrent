@@ -20,6 +20,7 @@ class TrackerManager:
         self.info_hash = torrent_data.info_hash
         self.peer_id = self._create_peer_id()
         self.available_peers = Queue(self.MAX_PEERS)
+        self._peers = set()
 
         self.update_task = None
 
@@ -73,6 +74,9 @@ class TrackerManager:
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():
                         peer = tracker.new_peers.get_nowait()
+                        if peer in self._peers:
+                            continue
+                        self._peers.add(peer)
                         peer = PeerConnection(peer[0], self.torrent_data.total_segments, self.info_hash, peer[1])
                         self.available_peers.put_nowait(peer)
 
