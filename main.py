@@ -23,8 +23,7 @@ async def queue_update_task(source_queues: list[asyncio.Queue], queue_target: Pr
         await asyncio.sleep(.001)
 
 
-async def download_from_torrent_file(filename, destination: Path):
-    torrent_file = TorrentData(filename)
+async def download_from_torrent_file(torrent_file: TorrentData, destination: Path):
     torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
@@ -100,4 +99,4 @@ def check_segment(filename, segment_id):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(download_from_torrent_file("torrent_files/test.torrent", Path('./downloaded')))
+    asyncio.run(download_from_torrent_file(TorrentData("torrent_files/test.torrent"), Path('./downloaded')))
