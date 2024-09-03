@@ -8,13 +8,14 @@ from segment_downloader import SegmentDownloader, DownloadResult
 from peer_connection import PeerConnection
 from pubsub import pub
 from priority_queue import PriorityQueue
+from requests_receiver import PeerReceiver
 
 
 class TorrentDownloader:
     MAX_PEER_COUNT = 50
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
-    def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):
+    def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: PriorityQueue):
         self.torrent = torrent
         self.file_writer = file_writer
         self.torrent_statistics = torrent_statistics
@@ -128,19 +129,25 @@ class TorrentDownloader:
             await asyncio.sleep(.01)
 
     async def _add_peer(self):
-        (peer_ip, peer_port) = await self.peer_queue.get()
-        peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
+        while True:
+            if self.peer_queue.counter == 0:
+                await asyncio.sleep(.00001)
+            else:
+                break
+
+        peer = self.peer_queue.pop()[1]
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
-                logging.info(f"Connected new peer: ({peer_ip}, {peer_port})")
+                # logging.info(f"Connected new peer: ({peer.ip}, {peer.port})")
                 self.active_peers.append(peer)
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
                 pub.subscribe(self.get_have_message_from_peer, peer.have_message_event)
                 pub.subscribe(self.get_bitfield_from_peer, peer.bitfield_update_event)
                 pub.subscribe(self.on_request_piece, peer.request_event)
                 self.send_bitfield_to_peer(peer)
-                self.check_for_unchoked(peer)
+                if not isinstance(peer, PeerReceiver):
+                    self.check_for_unchoked(peer)
                 return True
 
         logging.error('Возникли проблемы с установлением соединения с пиром')
@@ -159,11 +166,13 @@ class TorrentDownloader:
         elif peer is None:
             logging.error('Не указан пир, запросивший сегмент')
         else:
-            logging.info('request block')
-            piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
-            loop = asyncio.get_event_loop()
-            block = loop.run_until_complete(self.file_writer.read(piece_index))[byte_offset: byte_offset + block_length]
-            asyncio.create_task(peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block)))
+            asyncio.create_task(self._on_request_piece(request, peer))
+
+    async def _on_request_piece(self, request, peer):
+        logging.info('request block')
+        piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
+        block = (await self.file_writer.read_segment(piece_index))[byte_offset: byte_offset + block_length]
+        await peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block))
 
     def check_for_unchoked(self, peer):
         _was_unchoked = asyncio.create_task(self._check_for_unchoked_task(peer, 10))
@@ -171,7 +180,7 @@ class TorrentDownloader:
     async def _check_for_unchoked_task(self, peer: PeerConnection, delay):
         await asyncio.sleep(delay)
         if peer.peer_choked is True:
-            logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
+            # logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
             if peer in self.active_peers:
                 self.active_peers.remove(peer)
             await peer.close()

@@ -3,20 +3,24 @@ import hashlib
 import logging
 from asyncio import Queue
 from tracker_client import TrackerClient, TrackerEvent
+from peer_connection import PeerConnection
 from contextlib import suppress
 
 
 class TrackerManager:
-    PORT = 6880
     MAX_PEERS = 0
 
-    def __init__(self, torrent_data, torrent_statistics):
+    def __init__(self, torrent_data, torrent_statistics, port):
+        self.torrent_data = torrent_data
+        self.segment_info = torrent_statistics
+        self.port = port
+
         self.torrent_name = torrent_data.torrent_name
         self.tracker_clients = []
         self.info_hash = torrent_data.info_hash
         self.peer_id = self._create_peer_id()
         self.available_peers = Queue(self.MAX_PEERS)
-        self.segment_info = torrent_statistics
+        self._peers = set()
 
         self.update_task = None
 
@@ -29,7 +33,7 @@ class TrackerManager:
         return '-PC0001-' + hashlib.sha1(self.info_hash).digest().hex()[:12]
 
     def _add_tracker(self, url):
-        self.tracker_clients.append(TrackerClient(url, self.info_hash, self.peer_id, self.PORT, self.segment_info))
+        self.tracker_clients.append(TrackerClient(url, self.info_hash, self.peer_id, self.port, self.segment_info))
 
     async def __aenter__(self):
         bad_trackers = []
@@ -70,6 +74,10 @@ class TrackerManager:
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():
                         peer = tracker.new_peers.get_nowait()
+                        if peer in self._peers:
+                            continue
+                        self._peers.add(peer)
+                        peer = PeerConnection(peer[0], self.torrent_data.total_segments, self.info_hash, peer[1])
                         self.available_peers.put_nowait(peer)
 
                 await asyncio.sleep(1)

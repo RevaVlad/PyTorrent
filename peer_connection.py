@@ -73,7 +73,7 @@ class PeerConnection:
     async def send_message_to_peer(self, message: Message.Message) -> bool:
         if not self.handshake:
             allowed_messages = (
-                Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage, Message.HaveMessage)
+                Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
             if all(not isinstance(message, message_type) for message_type in allowed_messages):
                 return False
 
@@ -84,7 +84,7 @@ class PeerConnection:
             return True
         except OSError as e:
             self.is_active = False
-            logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
+            # logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
             return False
 
     # region Properties
@@ -176,7 +176,7 @@ class PeerConnection:
             data = await self.reader.read(4096)
             self.buffer += data
         except (asyncio.TimeoutError, OSError):
-            logging.error('Таймаут чтения с сокета')
+            # logging.error('Таймаут чтения с сокета')
             self.is_active = False
 
     async def run(self):
@@ -221,10 +221,10 @@ class PeerConnection:
             case Message.NotInterestedMessage():
                 self.peer_interested = False
             case Message.HaveMessage():
-                logging.info('got have message')
+                # logging.info('got have message')
                 await self.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
-                logging.info('got peer segments message')
+                # logging.info('got peer segments message')
                 await self.handle_available_piece(new_message)
             case Message.RequestsMessage():
                 self.handle_piece_request(new_message)

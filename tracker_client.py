@@ -68,6 +68,7 @@ class TrackerClient:
                         return
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 logging.info('Неудачная попытка входа')
+                return
                 await asyncio.sleep(10)
 
     def _parse_response(self, response):
