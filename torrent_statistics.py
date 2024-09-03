@@ -1,4 +1,7 @@
+import logging
+
 import bitstring
+import tkinter as tk
 
 
 class TorrentStatistics:
@@ -34,3 +37,20 @@ class TorrentStatistics:
     @property
     def bitfield(self):
         return self._bitfield
+
+
+class TorrentStatWithVariables(TorrentStatistics):
+
+    def __init__(self, left, total_segments):
+        super().__init__(left, total_segments)
+
+        self.downloadedVar = tk.IntVar()
+        self.uploadedVar = tk.IntVar()
+
+    def update_uploaded(self, size):
+        super().update_uploaded(size)
+        self.uploadedVar.set(self.uploaded)
+
+    def update_downloaded(self, size):
+        super().update_downloaded(size)
+        self.downloadedVar.set(self.downloaded)
