@@ -7,12 +7,11 @@ import time
 import logging
 import urllib.parse
 import Message
+import aiohttp
+import bencode
 from asyncio import Queue
 from enum import Enum
 from urllib.parse import urlencode
-
-import aiohttp
-import bencode
 
 
 class TrackerEvent(Enum):
@@ -168,7 +167,6 @@ class TrackerClient:
 
     async def send_message(self, conn, sock, tracker_message):
         message = tracker_message.encode()
-
         try:
             sock.sendto(message, conn)
             response = await self._read_from_socket_udp(sock)
