@@ -116,85 +116,87 @@ class TrackerClient:
         loop = asyncio.get_running_loop()
 
         try:
-            addr_info = await loop.getaddrinfo(parsed_url.hostname, parsed_url.port, family=socket.AF_INET,
-                                               type=socket.SOCK_DGRAM)
+            addr_info = await loop.getaddrinfo(parsed_url.hostname, parsed_url.port,
+                                               family=socket.AF_INET, type=socket.SOCK_DGRAM)
             ip, port = addr_info[0][4]
         except Exception as e:
             logging.error(f"Error resolving address: {e}")
             return
 
+        if ipaddress.ip_address(ip).is_private:
+            logging.info(f'Private IP detected: {ip}')
+            return
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.settimeout(10)
         sock.setblocking(False)
 
-        if ipaddress.ip_address(ip).is_private:
-            logging.info(f'private ip {ip}')
-            return
+        try:
+            response = await self.send_message((ip, port), sock, Message.UDPConnectionMessage())
+            if not response:
+                logging.error("No response from UDP Tracker Connection")
+                return
 
-        logging.info(f"Sending UDP connection request to {ip}:{port}")
-        response = await self.send_message((ip, port), loop, sock, Message.UDPConnectionMessage())
+            logging.debug("Received response from UDP tracker")
+            tracker_connection_output = Message.UDPConnectionMessage()
+            tracker_connection_output.decode(response)
 
-        if not response:
-            logging.error("No response from UdpTrackerConnection")
-            return
+            tracker_announce_input = Message.UPDTrackerAnnounceInput(
+                self.info_hash,
+                tracker_connection_output.connection_id,
+                self.peer_id,
+                events[event]
+            )
+            response = await self.send_message((ip, port), sock, tracker_announce_input)
+            if not response:
+                logging.error("No response from UDP Tracker Announce")
+                return
 
-        logging.debug("Received response from UDP tracker")
-        tracker_connection_output = Message.UDPConnectionMessage()
-        tracker_connection_output.decode(response)
+            tracker_announce_output = Message.UPDTrackerAnnounceOutput()
+            tracker_announce_output.decode(response)
 
-        tracker_announce_input = Message.UPDTrackerAnnounceInput(self.info_hash,
-                                                                 tracker_connection_output.connection_id,
-                                                                 self.peer_id, events[event])
-        response = await self.send_message((ip, port), loop, sock, tracker_announce_input)
+            peers = set((ip, port) for ip, port in tracker_announce_output.list_peers)
+            new_peers = peers - self._peers
+            if new_peers:
+                for peer in new_peers:
+                    self.new_peers.put_nowait(peer)
+            self._peers = peers
 
-        if not response:
-            logging.error("No response from UdpTrackerAnnounce")
-            return
+        finally:
+            sock.close()
 
-        tracker_announce_output = Message.UPDTrackerAnnounceOutput()
-        tracker_announce_output.decode(response)
-
-        peers = [(ip, port) for ip, port in tracker_announce_output.list_peers]
-        current_peers = set(peers)
-        for peer in current_peers - self._peers:
-            self.new_peers.put_nowait(peer)
-        self._peers = current_peers
-
-    async def send_message(self, conn, loop, sock, tracker_message):
+    async def send_message(self, conn, sock, tracker_message):
         message = tracker_message.encode()
-        logging.debug(f"Sending message: {message.hex()} to {conn}")
-
-        sock.sendto(message, conn)
 
         try:
-            response = await self._read_from_socket_udp(loop, sock)
+            sock.sendto(message, conn)
+            response = await self._read_from_socket_udp(sock)
         except asyncio.TimeoutError as e:
             logging.error(f"Timeout when sending message {message.hex()}: {e}")
             return
         except socket.error as e:
-            logging.error(f"Error when sending message: {e}")
+            logging.error(f"Socket error when sending message: {e}")
             return
 
-        logging.debug(f"Received response: {response.hex()}")
         return response
 
-    async def _read_from_socket_udp(self, loop, sock):
+    async def _read_from_socket_udp(self, sock):
         data = b''
-
         while True:
             try:
-                buff = await asyncio.wait_for(loop.sock_recv(sock, 4096), timeout=60)
-                if len(buff) <= 0:
+                logging.info('starting get info from socket')
+                buff = await asyncio.wait_for(asyncio.get_event_loop().sock_recv(sock, 4096), timeout=60)
+                logging.info('got info from socket')
+                if not buff:
                     break
                 data += buff
+
             except asyncio.TimeoutError as e:
-                logging.error(f"Timeout while waiting for data {e}")
+                logging.error(f"Timeout while waiting for data: {e}")
                 break
             except socket.error as e:
-                logging.error(f"Socket error: {e}")
+                logging.error(f"Socket error while waiting for data: {e}")
                 break
-
         return data
 
     async def close(self):
