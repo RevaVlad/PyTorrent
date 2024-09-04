@@ -105,6 +105,7 @@ class TrackerClient:
         return ip, port
 
     async def make_request_udp(self, event):
+        logging.info(f'Making request at "{self.url}" with params: {event}')
         events = {
             TrackerEvent.STARTED: 2,
             TrackerEvent.STOPPED: 3,
@@ -181,22 +182,28 @@ class TrackerClient:
         return response
 
     async def _read_from_socket_udp(self, sock):
+        max_retries = 8
+        retry_count = 0
         data = b''
-        while True:
+
+        while retry_count < max_retries:
             try:
-                logging.info('starting get info from socket')
-                buff = await asyncio.wait_for(asyncio.get_event_loop().sock_recv(sock, 4096), timeout=60)
-                logging.info('got info from socket')
+                logging.info(f"Attempt {retry_count + 1}: starting to get info from socket")
+                buff = await asyncio.wait_for(asyncio.get_event_loop().sock_recv(sock, 4096), timeout=10)
+                logging.info("Received data from socket")
                 if not buff:
                     break
                 data += buff
 
             except asyncio.TimeoutError as e:
-                logging.error(f"Timeout while waiting for data: {e}")
-                break
+                logging.warning(f"Timeout on attempt {retry_count + 1}: {e}")
+                retry_count += 1
+
             except socket.error as e:
-                logging.error(f"Socket error while waiting for data: {e}")
+                logging.error(f"Socket error on attempt {retry_count + 1}: {e}")
                 break
+
+        logging.error("Max retries reached. The tracker may be unresponsive.")
         return data
 
     async def close(self):

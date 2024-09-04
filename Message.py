@@ -29,7 +29,7 @@ class UDPConnectionMessage:
         self.transaction_id = randint(0, 10 ** 5)
 
     def encode(self):
-        return pack('!Q', 0x41727101980) + pack('!I', self.action) + pack('!I', self.transaction_id)
+        return pack('!Q', self.connection_id) + pack('!I', self.action) + pack('!I', self.transaction_id)
 
     def decode(self, message):
         self.action, self.transaction_id, self.connection_id = unpack('!IIQ', message)
