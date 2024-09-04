@@ -1,5 +1,7 @@
+import socket
 from abc import ABC, abstractmethod
 from struct import pack, unpack
+from random import randint
 import logging
 import bitstring
 
@@ -13,6 +15,85 @@ class Message(ABC):
     @abstractmethod
     def decode(message):
         pass
+
+
+class UDPConnectionMessage:
+    """
+    <connection_id><action><transaction_id> - input
+    <action><transaction_id><connection_id> - output
+    """
+
+    def __init__(self):
+        self.connection_id = 0x41727101980
+        self.action = 0
+        self.transaction_id = randint(0, 10 ** 5)
+
+    def encode(self):
+        return pack('!Q', 0x41727101980) + pack('!I', self.action) + pack('!I', self.transaction_id)
+
+    def decode(self, message):
+        self.action, self.transaction_id, self.connection_id = unpack('!IIQ', message)
+
+
+class UPDTrackerAnnounceInput:
+    """
+    events: none - 0
+    completed - 1
+    started - 2
+    stopped - 3
+    """
+    def __init__(self, info_hash, peer_id, connection_id, event=0):
+        self.info_hash = info_hash
+        self.peer_id = peer_id
+        self.connection_id = connection_id
+        self.event = event
+
+    def encode(self):
+        conn_id = pack('!Q', self.connection_id)
+        downloaded = pack('!Q', 0)
+        left = pack('!Q', 0)
+        uploaded = pack('!Q', 0)
+
+        action = pack('!I', 1)
+        trans_id = pack('!I', randint(0, 10 ** 5))
+        event = pack('!I', self.event)
+        ip = pack('!I', 0)
+        key = pack('!I', 0)
+        num_want = pack('!i', -1)
+        port = pack('!h', 8000)
+
+        return (conn_id + action + trans_id + self.info_hash + self.peer_id + downloaded +
+                left + uploaded + event + ip + key + num_want + port)
+
+
+class UPDTrackerAnnounceOutput:
+    def __init__(self):
+        self.action = None
+        self.transaction_id = None
+        self.interval = None
+        self.leechers = None
+        self.seeders = None
+        self.list_peers = []
+
+    def decode(self, message):
+        self.action, = unpack('!I', message[:4])
+        self.transaction_id, = unpack('!I', message[4:8])
+        self.interval, = unpack('!I', message[8:12])
+        self.leechers, = unpack('!I', message[12:16])
+        self.seeders, = unpack('!I', message[16:20])
+        self.list_peers = self._parse_adresses(message[20:])
+
+    def _parse_adresses(self, raw_bytes):
+        socks_addr = []
+        for i in range(int(len(raw_bytes) / 6)):
+            start = i * 6
+            end = start + 6
+            ip = socket.inet_ntoa(raw_bytes[start:(end - 2)])
+            raw_port = raw_bytes[(end - 2):end]
+            port = raw_port[1] + raw_port[0] * 256
+            socks_addr.append((ip, port))
+
+        return socks_addr
 
 
 class HandshakeMessage(Message):
@@ -166,6 +247,7 @@ class ContinueConnectionMessage(Message):
     """
     <0000>
     """
+
     def encode(self):
         return pack('!I', 0)
 
@@ -182,6 +264,7 @@ class ChokedMessage(Message):
     """
     <0001><0>
     """
+
     def encode(self):
         return pack('!IB', 1, 0)
 
@@ -198,6 +281,7 @@ class NotInterestedMessage(Message):
     """
     <0001><3>
     """
+
     def encode(self):
         return pack('!IB', 1, 3)
 

@@ -105,7 +105,7 @@ def check_segment(filename, segment_id):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.FATAL)
-    # logging.basicConfig(level=logging.INFO)
-    # asyncio.run(download_from_torrent_file("torrent_files/file.torrent", Path('./downloaded')), debug=True)
-    asyncio.run(main_loop())
+    #logging.basicConfig(level=logging.FATAL)
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(download_from_torrent_file("torrent_files/file.torrent", Path('./downloaded')), debug=True)
+    #asyncio.run(main_loop())

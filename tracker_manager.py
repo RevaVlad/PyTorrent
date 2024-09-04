@@ -21,7 +21,8 @@ class TrackerManager:
         self.update_task = None
 
         for url in torrent_data.trackers:
-            if not url.startswith('http'):
+            if not url.startswith('http') and not url.startswith('udp'):
+                logging.error(f'Неверный трекер: {url}')
                 continue
             self._add_tracker(url)
 
