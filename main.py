@@ -34,21 +34,30 @@ async def update_progress_bar(bar, torrent_stat: TorrentStatistics):
     bar.finish()
 
 
+async def update_cover_queue(cover: asyncio.Queue, normal: asyncio.Queue):
+    while True:
+        while not normal.empty():
+            peer = normal.get_nowait()
+            logging.info(f"New peer {peer[0]}")
+            if peer[0] == "192.168.1.108":
+                logging.info(f"Found local!")
+                cover.put_nowait(peer)
+        await asyncio.sleep(0.0001)
+
+
 async def download_from_torrent_file(filename, destination: Path):
     torrent_file = TorrentData(filename)
     torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
-    progress_bar = IncrementalBar(f'{Path(filename).name} progress', max=torrent_statistics.left)
-    bar_task = asyncio.create_task(update_progress_bar(progress_bar, torrent_statistics))
 
     with FileWriter(torrent_file, destination=destination) as file_writer:
-        # async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
+        async with TrackerManager(torrent_file, torrent_statistics) as trackers_manager:
             logging.info("Created all objects")
-            # trackers_manager.create_peers_update_task()
+            trackers_manager.create_peers_update_task()
             queue = asyncio.Queue()
-            queue.put_nowait(('176.59.207.238', 52656))
+            asyncio.create_task(update_cover_queue(queue, trackers_manager.available_peers))
             torrent_downloader = TorrentDownloader(torrent_file,
                                                    file_writer,
                                                    torrent_statistics,

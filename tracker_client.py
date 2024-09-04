@@ -48,7 +48,7 @@ class TrackerClient:
             'info_hash': self.info_hash,
             'peer_id': self.peer_id,
             'port': self.port,
-            'compact': 1,
+            'compact': 0,
             'uploaded': self.segment_info.uploaded,
             'downloaded': self.segment_info.downloaded,
             'left': self.segment_info.left,
@@ -87,6 +87,7 @@ class TrackerClient:
 
         for peer in current_peers - self._peers:
             self.new_peers.put_nowait(peer)
+            logging.info(f"New peer: {peer}")
         self._peers = current_peers
 
     def _decode_peer_data(self, row_data):
