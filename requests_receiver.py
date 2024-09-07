@@ -21,20 +21,67 @@ class PeerReceiver(PeerConnection):
 
 
 class RequestsReceiver:
-    ACCEPT_TIMEOUT = 10
+    ACCEPT_TIMEOUT = 100
 
     def __init__(self, torrent_data):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.available_peers = asyncio.Queue()
         self.torrent = torrent_data
-        self.run_task = None
 
-        self.sock.bind(('0.0.0.0', 52656))
+        upnp = UPnP()
 
-    def start_server(self):
-        self.run_task = asyncio.create_task(self._run_server())
+        devices = upnp.discover()
 
-    async def _run_server(self):
+        if devices:
+
+            device = devices[0]
+
+            wan_ip_connection = device['WANIPConn1']
+
+            if wan_ip_connection:
+                external_port = 52656  # Порт на роутере
+                internal_port = 52656  # Порт на компе
+                internal_client = '192.168.1.108'
+                protocol = 'TCP'
+                description = 'Port Forwarding'
+
+                try:
+                    print(wan_ip_connection.get_actions())
+                    # wan_ip_connection.DeletePortMapping(
+                    #     NewRemoteHost='',
+                    #     NewExternalPort=external_port,
+                    #     NewProtocol=protocol
+                    # )
+                    # print("Deleted port mapping")
+                    wan_ip_connection.AddPortMapping(
+                        NewRemoteHost='',
+                        NewExternalPort=external_port,
+                        NewProtocol=protocol,
+                        NewInternalPort=internal_port,
+                        NewInternalClient=internal_client,
+                        NewPortMappingDescription=description,
+                        NewEnabled=False,
+                        NewLeaseDuration=10000
+                    )
+                    print(f'Порт {external_port} успешно открыт на {internal_client}')
+                except Exception as e:
+                    print(f'Не удалось открыть порт: {e}')
+            else:
+                print('Снова нифига не получилось')
+        else:
+            print('Устройства с поддержкой UPnP не найдены')
+
+        self.sock.bind(('192.168.1.108', 52656))
+
+    @property
+    def port(self):
+        return self.sock.getsockname()[1]
+
+    async def close(self):
+        self.sock.close()
+        await super().close()
+
+    async def run_server(self):
         self.sock.listen(1)
         self.sock.setblocking(False)
 
@@ -50,14 +97,4 @@ class RequestsReceiver:
                                                                 self.torrent.total_segments,
                                                                 self.torrent.info_hash))
                 except asyncio.TimeoutError:
-                    pass
-
-    @property
-    def port(self):
-        return self.sock.getsockname()[1]
-
-    async def close(self):
-        if self.run_task:
-            self.run_task.cancel()
-        self.sock.close()
-        await super().close()
+                    logging.info("Timeout")

@@ -15,7 +15,7 @@ class TorrentDownloader:
     MAX_PEER_COUNT = 50
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
-    def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: PriorityQueue):
+    def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):
         self.torrent = torrent
         self.file_writer = file_writer
         self.torrent_statistics = torrent_statistics
@@ -129,17 +129,12 @@ class TorrentDownloader:
             await asyncio.sleep(.01)
 
     async def _add_peer(self):
-        while True:
-            if self.peer_queue.counter == 0:
-                await asyncio.sleep(.00001)
-            else:
-                break
-
-        peer = self.peer_queue.pop()[1]
+        peer = await self.peer_queue.get()
+        # peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
-                # logging.info(f"Connected new peer: ({peer.ip}, {peer.port})")
+                logging.info(f"Connected new peer: ({peer.ip}, {peer.port})")
                 self.active_peers.append(peer)
                 self.peer_update_tasks.append(asyncio.create_task(peer.run()))
                 pub.subscribe(self.get_have_message_from_peer, peer.have_message_event)
@@ -180,7 +175,7 @@ class TorrentDownloader:
     async def _check_for_unchoked_task(self, peer: PeerConnection, delay):
         await asyncio.sleep(delay)
         if peer.peer_choked is True:
-            # logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
+            logging.info(f'Пир {peer.ip} был отключён - не отправил unchoked messagе')
             if peer in self.active_peers:
                 self.active_peers.remove(peer)
             await peer.close()

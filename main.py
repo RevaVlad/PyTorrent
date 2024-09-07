@@ -34,19 +34,20 @@ async def download_from_torrent_file(torrent_file: TorrentData, destination: Pat
             logging.info(f"Port: {requests_receiver.port}")
             requests_receiver.start_server()
 
-            peers_queue = PriorityQueue()
-            queue_task = asyncio.create_task(queue_update_task([requests_receiver.available_peers,
-                                                                trackers_manager.available_peers], peers_queue))
-            logging.info("Created all objects")
+            # asyncio.create_task(zaglushka(requests_receiver.available_peers, trackers_manager.available_peers))
 
-            trackers_manager.create_peers_update_task()
+            logging.info("Created all objects")
+            # trackers_manager.create_peers_update_task()
             torrent_downloader = TorrentDownloader(torrent_file,
                                                    file_writer,
                                                    torrent_statistics,
-                                                   peers_queue)
+                                                   requests_receiver.available_peers)
             await torrent_downloader.download_torrent()
+            while True:
+                await asyncio.sleep(.1)
+            torrent_downloader.close()
 
-    queue_task.cancel()
+    request_receiver.close()
     return torrent_downloader, requests_receiver
 
 
@@ -97,6 +98,7 @@ def check_segment(filename, segment_id):
 
 
 if __name__ == '__main__':
+    # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
 
     data = TorrentData("torrent_files/test.torrent")
