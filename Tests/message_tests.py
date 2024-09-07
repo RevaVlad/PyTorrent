@@ -1,9 +1,11 @@
 import logging
+import socket
 
 import bitstring
 import pytest
 import Message
 from struct import pack
+from random import randint
 
 
 @pytest.fixture
@@ -40,6 +42,31 @@ def index():
 @pytest.fixture
 def byte_offset():
     return 5
+
+@pytest.fixture
+def sample_announce_response():
+    action = 1
+    transaction_id = 12345
+    interval = 1800
+    leechers = 50
+    seeders = 100
+
+    peer1_ip = socket.inet_aton('192.168.1.1')
+    peer1_port = pack('!H', 6881)
+    peer2_ip = socket.inet_aton('192.168.1.2')
+    peer2_port = pack('!H', 6882)
+
+    message = (
+            pack('!I', action) +
+            pack('!I', transaction_id) +
+            pack('!I', interval) +
+            pack('!I', leechers) +
+            pack('!I', seeders) +
+            peer1_ip + peer1_port +
+            peer2_ip + peer2_port
+    )
+
+    return message
 
 
 @pytest.fixture
@@ -190,3 +217,49 @@ class TestMessages:
         with caplog.at_level(logging.ERROR):
             Message.NotInterestedMessage.decode(data)
             assert 'При запросе на отсутсвие интереса был получен некорректный индентификатор: 2' in caplog.text
+
+    def test_udp_connection_encode(self):
+        message = Message.UDPConnectionMessage()
+        assert message.encode() == pack('!Q', 0x41727101980) + pack('!I', 0) + pack('!I', message.transaction_id)
+
+    def test_udp_connection_decode(self):
+        message = Message.UDPConnectionMessage()
+        trans_id = randint(0, 10 ** 5)
+        message_output = pack('!IIQ', 0, trans_id, 0x41727101980)
+        message.decode(message_output)
+        assert message.transaction_id == trans_id
+        assert 0 == message.action
+        assert 0x41727101980 == message.connection_id
+
+    def test_udp_announce_encode(self, info_hash, peer_id):
+        message = Message.UPDTrackerAnnounceInput(info_hash, peer_id, 0x41727101980, 1)
+        conn_id = pack('!Q', 0x41727101980)
+        downloaded = pack('!Q', 0)
+        left = pack('!Q', 0)
+        uploaded = pack('!Q', 0)
+
+        action = pack('!I', 1)
+        trans_id = pack('!I', message.transaction_id)
+        event = pack('!I', 1)
+        ip = pack('!I', 0)
+        key = pack('!I', 0)
+        num_want = pack('!i', -1)
+        port = pack('!h', 8000)
+        assert (conn_id + action + trans_id + info_hash + peer_id + downloaded +
+                left + uploaded + event + ip + key + num_want + port) == message.encode()
+
+    def test_decode_announce_response(self, sample_announce_response):
+        udp_output = Message.UPDTrackerAnnounceOutput()
+        udp_output.decode(sample_announce_response)
+
+        assert udp_output.action == 1
+        assert udp_output.transaction_id == 12345
+        assert udp_output.interval == 1800
+        assert udp_output.leechers == 50
+        assert udp_output.seeders == 100
+
+        expected_peers = [
+            ('192.168.1.1', 6881),
+            ('192.168.1.2', 6882)
+        ]
+        assert udp_output.list_peers == expected_peers

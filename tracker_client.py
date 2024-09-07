@@ -138,8 +138,7 @@ class TrackerClient:
                 return
 
             logging.debug("Received response from UDP tracker")
-            tracker_connection_output = Message.UDPConnectionMessage()
-            tracker_connection_output.decode(response)
+            tracker_connection_output = Message.UDPConnectionMessage().decode(response)
 
             tracker_announce_input = Message.UPDTrackerAnnounceInput(
                 self.info_hash,

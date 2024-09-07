@@ -47,6 +47,7 @@ class UPDTrackerAnnounceInput:
         self.peer_id = peer_id
         self.connection_id = connection_id
         self.event = event
+        self.transaction_id = randint(0, 10 ** 5)
 
     def encode(self):
         conn_id = pack('!Q', self.connection_id)
@@ -55,7 +56,7 @@ class UPDTrackerAnnounceInput:
         uploaded = pack('!Q', 0)
 
         action = pack('!I', 1)
-        trans_id = pack('!I', randint(0, 10 ** 5))
+        trans_id = pack('!I', self.transaction_id)
         event = pack('!I', self.event)
         ip = pack('!I', 0)
         key = pack('!I', 0)
@@ -90,7 +91,7 @@ class UPDTrackerAnnounceOutput:
             end = start + 6
             ip = socket.inet_ntoa(raw_bytes[start:(end - 2)])
             raw_port = raw_bytes[(end - 2):end]
-            port = raw_port[1] + raw_port[0] * 256
+            port = unpack('!H', raw_port)[0]
             socks_addr.append((ip, port))
 
         return socks_addr
