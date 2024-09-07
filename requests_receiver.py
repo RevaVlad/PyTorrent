@@ -1,6 +1,5 @@
 import socket, asyncio, logging, upnpy
 from peer_connection import PeerConnection
-from upnpy import UPnP
 
 
 class PeerReceiver(PeerConnection):
@@ -21,18 +20,26 @@ class PeerReceiver(PeerConnection):
 
 
 class RequestsReceiver:
-    ACCEPT_TIMEOUT = 10
+    ACCEPT_TIMEOUT = 100
 
     def __init__(self, torrent_data):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.available_peers = asyncio.Queue()
         self.torrent = torrent_data
-        self.run_task = None
+        self.sock.bind(('', 0))
 
-        self.sock.bind(('0.0.0.0', 52656))
+        self._task = None
+
+    @property
+    def port(self):
+        return self.sock.getsockname()[1]
+
+    async def close(self):
+        self.sock.close()
+        self._task.cancel()
 
     def start_server(self):
-        self.run_task = asyncio.create_task(self._run_server())
+        self._task = asyncio.create_task(self._run_server())
 
     async def _run_server(self):
         self.sock.listen(1)
@@ -50,14 +57,4 @@ class RequestsReceiver:
                                                                 self.torrent.total_segments,
                                                                 self.torrent.info_hash))
                 except asyncio.TimeoutError:
-                    pass
-
-    @property
-    def port(self):
-        return self.sock.getsockname()[1]
-
-    async def close(self):
-        if self.run_task:
-            self.run_task.cancel()
-        self.sock.close()
-        await super().close()
+                    logging.info("Timeout")

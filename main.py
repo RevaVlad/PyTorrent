@@ -23,9 +23,7 @@ async def queue_update_task(source_queues: list[asyncio.Queue], queue_target: Pr
         await asyncio.sleep(.001)
 
 
-async def download_from_torrent_file(filename, destination: Path):
-    torrent_file = TorrentData(filename)
-    torrent_statistics = TorrentStatistics(torrent_file.total_length, torrent_file.total_segments)
+async def download_from_torrent_file(torrent_file: TorrentData, destination: Path, torrent_statistics: TorrentStatistics):
     logging.info(
         f"Total length: {torrent_file.total_length}, Segment length: {torrent_file.segment_length}, Total segments {torrent_file.total_segments}")
 
@@ -36,19 +34,18 @@ async def download_from_torrent_file(filename, destination: Path):
             logging.info(f"Port: {requests_receiver.port}")
             requests_receiver.start_server()
 
-            peers_queue = PriorityQueue()
-            queue_task = asyncio.create_task(queue_update_task([requests_receiver.available_peers,
-                                                                trackers_manager.available_peers], peers_queue))
             logging.info("Created all objects")
-
-            trackers_manager.create_peers_update_task()
+            # trackers_manager.create_peers_update_task()
             torrent_downloader = TorrentDownloader(torrent_file,
                                                    file_writer,
                                                    torrent_statistics,
-                                                   peers_queue)
+                                                   trackers_manager.available_peers)
             await torrent_downloader.download_torrent()
+            while True:
+                await asyncio.sleep(.1)
+            torrent_downloader.close()
 
-    queue_task.cancel()
+    request_receiver.close()
     return torrent_downloader, requests_receiver
 
 
@@ -86,7 +83,7 @@ def get_previous_torrents(pickle_file_name):
 def save_current_torrents(pickle_file_name, torrents):
     project_directory = Path(sys.path[0])
     location = project_directory / pickle_file_name
-    if not (location).exists():
+    if not location.exists():
         location.open('w').close()
     with open(location, 'wb') as f:
         pickle.dump(torrents, f)
@@ -99,5 +96,10 @@ def check_segment(filename, segment_id):
 
 
 if __name__ == '__main__':
+    # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(download_from_torrent_file("torrent_files/test.torrent", Path('./downloaded')))
+
+    data = TorrentData("torrent_files/test.torrent")
+    asyncio.run(download_from_torrent_file(data,
+                                           Path('./downloaded'),
+                                           TorrentStatistics(data.total_length, data.total_segments)))
