@@ -11,7 +11,7 @@ from priority_queue import PriorityQueue
 from requests_receiver import PeerReceiver
 
 
-class TorrentDownloader:
+class Downloader:
     MAX_PEER_COUNT = 50
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
@@ -41,7 +41,7 @@ class TorrentDownloader:
         while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
             await asyncio.sleep(.1)
 
-            if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
+            if len(self._segment_downloaders) < Downloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id, finding_result = await self.try_find_rarest_segment()
                 if not finding_result:
                     continue
@@ -122,7 +122,7 @@ class TorrentDownloader:
     async def peer_connection_task(self):
         logging.info("Started peer connection task")
         while True:
-            if len(self.active_peers) < TorrentDownloader.MAX_PEER_COUNT:
+            if len(self.active_peers) < Downloader.MAX_PEER_COUNT:
                 result = True
                 while result:
                     result = await self._add_peer()

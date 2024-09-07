@@ -1,8 +1,10 @@
 import asyncio
+import re
 import socket
 import struct
 import time
 import logging
+import os
 from asyncio import Queue
 from enum import Enum
 from urllib.parse import urlencode
@@ -18,7 +20,7 @@ class TrackerEvent(Enum):
     CHECK = ''
 
 
-class TrackerClient:
+class HttpTrackerClient:
 
     def __init__(self, url, info_hash, peer_id, port, segment_info):
         self._peers = set()
@@ -101,3 +103,21 @@ class TrackerClient:
         except asyncio.TimeoutError:
             pass
 
+
+class LocalConnections:
+
+    regular_exp = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
+
+    def __init__(self):
+        self._peers = set()
+        self.new_peers = asyncio.Queue()
+
+    async def make_request(self, _):
+        ips = self.regular_exp.findall(os.popen('arp -a').read())
+        for ip in ips:
+            await self._add_peer(ip)
+
+    async def _add_peer(self, peer_ip):
+        if peer_ip in self._peers:
+            return
+        await self.new_peers.put((peer_ip, 52656))

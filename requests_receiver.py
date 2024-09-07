@@ -26,7 +26,7 @@ class RequestsReceiver:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.available_peers = asyncio.Queue()
         self.torrent = torrent_data
-        self.sock.bind(('', 0))
+        self.sock.bind(('', 52656))
 
         self._task = None
 
