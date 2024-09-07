@@ -6,7 +6,7 @@ import Message
 import socket
 import errno
 from segment_downloader import SegmentDownloader
-from peerconnection import PeerConnection
+from peer_connection import PeerConnection
 from pubsub import pub
 from math import ceil
 
@@ -63,7 +63,6 @@ def mock_segment_class():
 @pytest.fixture()
 def peer():
     return PeerConnection('127.0.0.1', 4)
-
 
 
 @pytest.fixture()

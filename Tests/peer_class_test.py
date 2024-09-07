@@ -1,21 +1,22 @@
-import socket
+import asyncio
 import pytest
 import bitstring
 import Message
 import logging
+from unittest.mock import AsyncMock
 from struct import pack
 from pubsub import pub
-from peerconnection import PeerConnection
-
-
-@pytest.fixture()
-def peer():
-    return PeerConnection('127.0.0.1', 2)
+from peer_connection import PeerConnection
 
 
 @pytest.fixture()
 def info_hash():
     return b'\x12\x34\x56\x78\x9A\xBC\xDE\xF0\x12\x34\x56\x78\x9A\xBC\xDE\xF0\x12\x34\x56\x78'
+
+
+@pytest.fixture()
+def peer(info_hash):
+    return PeerConnection('127.0.0.1', 2, info_hash)
 
 
 @pytest.fixture()
@@ -30,44 +31,6 @@ def messages():
             Message.HaveMessage(5), Message.PeerSegmentsMessage(bitstring.BitArray(bin='101010')),
             Message.RequestsMessage(5, 1, 3), Message.SendPieceMessage(5, 1, b'Hi!'),
             Message.CancelMessage(5, 1, 3)]
-
-
-@pytest.fixture()
-def mock_socket_class():
-    class MockSocket:
-        def __init__(self):
-            self.messages = []
-
-        def setblocking(self, flag):
-            pass
-
-        def send(self, message):
-            self.messages.append(message)
-
-    return MockSocket()
-
-
-@pytest.fixture()
-def mock_pubsub():
-    class MockPubSub:
-        def __init__(self):
-            self.data = {}
-
-        def update_part_bitfield(self, peer, piece_index):
-            self.data['peer'] = peer
-            self.data['piece_index'] = piece_index
-
-        def update_all_bitfield(self, peer):
-            self.data['peer'] = peer
-
-        def send_piece(self, piece):
-            self.data['piece_index'], self.data['byte_offset'], self.data['data'] = piece
-
-        def request_piece(self, request, peer):
-            self.data['peer'] = peer
-            self.data['piece_index'], self.data['byte_offset'], self.data['block_len'] = request
-
-    return MockPubSub()
 
 
 class TestPeerClass:
@@ -93,51 +56,83 @@ class TestPeerClass:
             assert result is None
             assert 'Некорректное сообщение, указан несуществующий id_message: 20' in caplog.text
 
-    def test_connection(self, monkeypatch, peer, mock_socket_class):
-        def mock_create_connection(address):
-            return mock_socket_class
+    @pytest.mark.asyncio
+    async def test_connect_success(self, monkeypatch, info_hash):
+        mock_open_connection = AsyncMock(return_value=(AsyncMock(), AsyncMock()))
+        monkeypatch.setattr(asyncio, 'open_connection', mock_open_connection)
 
-        with monkeypatch.context() as m:
-            m.setattr(socket, 'create_connection', mock_create_connection)
-            assert peer.connect() is True
-            assert peer.is_active is True
-            assert peer.socket is not None
+        peer = PeerConnection('127.0.0.1', 6881, info_hash)
+        result = await peer.connect()
 
-    def test_connection_fail(self, monkeypatch, peer, caplog):
-        def mock_connection_fail(address):
-            raise socket.error()
+        assert result is True
+        assert peer.is_active is True
+        mock_open_connection.assert_called_once_with('127.0.0.1', 6881)
+
+    @pytest.mark.asyncio
+    async def test_connect_timeout_error(self, monkeypatch, caplog, info_hash, peer):
+        mock_open_connection = AsyncMock(side_effect=asyncio.TimeoutError)
+        monkeypatch.setattr(asyncio, 'open_connection', mock_open_connection)
 
         with caplog.at_level(logging.ERROR):
-            with monkeypatch.context() as m:
-                m.setattr(socket, 'create_connection', mock_connection_fail)
-                assert peer.connect() is False
-                assert peer.is_active is False
-                assert peer.socket is None
-                assert 'Socket error: Пир 127.0.0.1:6881 не может быть подключён' in caplog.text
+            result = await peer.connect()
 
-    def test_send_message(self, monkeypatch, peer, mock_socket_class):
+        assert result is False
+        assert peer.is_active is False
+        assert "Socket error" in caplog.text
+        mock_open_connection.assert_called_once_with('127.0.0.1', 6881)
+
+    @pytest.mark.asyncio
+    async def test_connect_os_error(self, monkeypatch, caplog, info_hash, peer):
+        mock_open_connection = AsyncMock(side_effect=OSError)
+        monkeypatch.setattr(asyncio, 'open_connection', mock_open_connection)
+
+        with caplog.at_level(logging.ERROR):
+            result = await peer.connect()
+
+        assert result is False
+        assert peer.is_active is False
+        assert "Socket error" in caplog.text
+        mock_open_connection.assert_called_once_with('127.0.0.1', 6881)
+
+    @pytest.mark.asyncio
+    async def test_send_message(self, monkeypatch, peer):
         peer.is_active = True
+        peer.handshake = True
+        mock_writer = AsyncMock()
         with monkeypatch.context() as m:
-            m.setattr(peer, 'socket', mock_socket_class)
-            peer.send_message_to_peer(Message.SendPieceMessage(5, 1, b'Hi!').encode())
+            m.setattr(peer, 'writer', mock_writer)
+            result = await peer.send_message_to_peer(Message.HaveMessage(1))
             assert peer.is_active is True
-            assert Message.SendPieceMessage(5, 1, b'Hi!').encode() in mock_socket_class.messages
+            assert result is True
+            mock_writer.write.assert_called_once_with(Message.HaveMessage(1).encode())
+            mock_writer.drain.assert_called_once()
 
-    def test_send_message_failed(self, monkeypatch, peer, caplog):
-        class MockMessage:
-            def send(self, message):
-                raise socket.error()
+    @pytest.mark.asyncio
+    async def test_send_message_failed_no_handshake(self, monkeypatch, peer, caplog):
+        peer.is_active = True
+        mock_writer = AsyncMock()
+        with monkeypatch.context() as m:
+            m.setattr(peer, 'writer', mock_writer)
+            result = await peer.send_message_to_peer(Message.RequestsMessage(5, 1, 3))
+            assert result is False
+            mock_writer.write.assert_not_called()
+            mock_writer.drain.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_send_message_failed_error(self, monkeypatch, peer, caplog):
+        peer.is_active = True
+        peer.handshake = True
+        writer = AsyncMock()
+        writer.drain.side_effect = OSError
         with caplog.at_level(logging.ERROR):
             with monkeypatch.context() as m:
-                peer.is_active = True
-                m.setattr(peer, 'socket', MockMessage())
-                message = Message.SendPieceMessage(5, 1, b'Hi!').encode()
-                peer.send_message_to_peer(message)
-                assert peer.is_active is False
-                assert f'Socket error. Невозможно отправить сообщение {message}'
+                m.setattr(peer, 'writer', writer)
+                result = await peer.send_message_to_peer(Message.RequestsMessage(5, 1, 3))
+            assert peer.is_active is False
+            assert result is False
 
-    def test_properties(self, monkeypatch, peer, mock_socket_class):
+    @pytest.mark.asyncio
+    async def test_properties(self, monkeypatch, peer):
         peer.peer_choked = False
         peer.interested = True
         peer.choked = False
@@ -145,83 +140,106 @@ class TestPeerClass:
         assert peer.interested is True
         assert peer.choked is False
 
+        mock_send = AsyncMock()
         with monkeypatch.context() as m:
             peer.choked = True
-            m.setattr(peer, 'socket', mock_socket_class)
+            m.setattr(peer, 'send_message_to_peer', mock_send)
             peer.peer_interested = True
             assert peer.peer_interested is True
-            assert Message.UnChokedMessage().encode() in mock_socket_class.messages
 
     def test_available_pieces(self, peer):
         peer.bitfield = bitstring.BitArray(bin='10')
         assert peer.check_for_piece(0) == 1
         assert peer.check_for_piece(1) == 0
 
-    def test_handle_got_piece(self, monkeypatch, peer, mock_socket_class, mock_pubsub):
-        pub.subscribe(mock_pubsub.update_part_bitfield, 'updatePartBitfield')
-        sent_peer = PeerConnection('127.0.0.3', 2)
+    @pytest.mark.asyncio
+    async def test_handle_got_piece(self, monkeypatch, peer):
         with monkeypatch.context() as m:
-            m.setattr(peer, 'socket', mock_socket_class)
-            # Исправить когда появится класс Piece на какой-то piece вместо 1
-            peer.handle_got_piece(sent_peer, Message.HaveMessage(1))
-            assert peer.interested is True
-            assert Message.InterestedMessage().encode() in mock_socket_class.messages
-            assert mock_pubsub.data['peer'].ip == sent_peer.ip and mock_pubsub.data['peer'].number_of_pieces == 2
-            assert mock_pubsub.data['piece_index'] == 1
+            mock_pubsub = AsyncMock()
+            m.setattr(pub, 'sendMessage', mock_pubsub)
+            mock_send = AsyncMock()
+            m.setattr(peer, 'send_message_to_peer', mock_send)
+            message = Message.HaveMessage(1)
+            await peer.handle_got_piece(message)
+        assert peer.bitfield[1] is True
+        assert peer.interested is True
+        mock_pubsub.assert_called_once_with(
+            peer.have_message_event,
+            index=1,
+            peer=peer
+        )
 
-    def test_handle_available_piece(self, monkeypatch, peer, mock_socket_class, mock_pubsub):
-        pub.subscribe(mock_pubsub.update_all_bitfield, 'updateAllBitfield')
-        sent_peer = PeerConnection('127.0.0.2', 2)
-        sent_peer.bitfield = bitstring.BitArray(bin='10')
+        assert mock_send.call_count == 1
+        assert isinstance(mock_send.call_args[0][0], Message.InterestedMessage)
+
+    @pytest.mark.asyncio
+    async def test_handle_available_piece(self, monkeypatch, peer):
         peer.bitfield = bitstring.BitArray(bin='01')
         with monkeypatch.context() as m:
-            m.setattr(peer, 'socket', mock_socket_class)
-            peer.handle_available_piece(sent_peer, Message.PeerSegmentsMessage(sent_peer.bitfield))
-            assert peer.interested is True
-            assert Message.InterestedMessage().encode() in mock_socket_class.messages
-            assert mock_pubsub.data['peer'].ip == sent_peer.ip and mock_pubsub.data['peer'].number_of_pieces == 2
-            assert peer.bitfield == bitstring.BitArray(bin='11')
+            mock_pubsub = AsyncMock()
+            m.setattr(pub, 'sendMessage', mock_pubsub)
+            mock_send = AsyncMock()
+            m.setattr(peer, 'send_message_to_peer', mock_send)
+            message = Message.PeerSegmentsMessage(bitstring.BitArray(bin='10'))
+            await peer.handle_available_piece(message)
+        assert peer.interested is True
+        assert peer.bitfield == bitstring.BitArray(bin='11')
+        mock_pubsub.assert_called_once_with(
+            peer.bitfield_update_event,
+            peer=peer
+        )
+        assert mock_send.call_count == 1
+        assert isinstance(mock_send.call_args[0][0], Message.InterestedMessage)
 
-    def test_handle_send_piece(self, peer, mock_pubsub):
-        pub.subscribe(mock_pubsub.send_piece, 'sendPiece')
-        peer.handle_piece_receive((1, 2, b'Hi'))
-        assert mock_pubsub.data['piece_index'] == 1
-        assert mock_pubsub.data['byte_offset'] == 2
-        assert mock_pubsub.data['data'] == b'Hi'
-
-    def test_handle_request(self, monkeypatch, peer, mock_socket_class, mock_pubsub):
-        pub.subscribe(mock_pubsub.request_piece, 'requestPiece')
+    def test_handle_send_piece(self, peer, monkeypatch):
+        mock_pubsub = AsyncMock()
         with monkeypatch.context() as m:
-            m.setattr(peer, 'socket', mock_socket_class)
+            m.setattr(pub, 'sendMessage', mock_pubsub)
+            message = Message.SendPieceMessage(1, 1, b'Hi')
+            peer.handle_piece_receive(message)
+        mock_pubsub.assert_called_once_with(
+            peer.receive_event,
+            request=message,
+            peer=peer
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_request(self, monkeypatch, peer):
+        peer.peer_choked = False
+        mock_pubsub = AsyncMock()
+        with monkeypatch.context() as m:
+            m.setattr(pub, 'sendMessage', mock_pubsub)
+            mock_send = AsyncMock()
+            m.setattr(peer, 'send_message_to_peer', mock_send)
             peer.peer_interested = True
-            peer.peer_choked = False
-            peer.handle_piece_request((1, 2, 1))
-            assert mock_pubsub.data['peer'].ip == '127.0.0.1' and mock_pubsub.data['peer'].number_of_pieces == 2
-            assert mock_pubsub.data['piece_index'] == 1
-            assert mock_pubsub.data['byte_offset'] == 2
-            assert mock_pubsub.data['block_len'] == 1
-            assert Message.UnChokedMessage().encode() in mock_socket_class.messages
+            message = Message.RequestsMessage(5, 1, 10)
+            peer.handle_piece_request(message)
+        mock_pubsub.assert_called_once_with(
+            peer.request_event,
+            request=message,
+            peer=peer
+        )
 
-    def test_handle_handshake(self, peer, info_hash, peer_id):
+    def test_handle_handshake_buffer(self, peer, info_hash, peer_id):
         peer.buffer = Message.HandshakeMessage(info_hash, peer_id).encode()
-        assert peer.handle_handshake() is True
+        assert peer.handle_handshake_for_buffer() is True
         assert peer.handshake is True
         assert peer.buffer == b''
 
-    def test_handle_handshake_with_empty_peer_id(self, peer, info_hash):
+    def test_handle_handshake_buffer_with_empty_peer_id(self, peer, info_hash):
         peer.buffer = Message.HandshakeMessage(info_hash).encode()
-        assert peer.handle_handshake() is True
+        assert peer.handle_handshake_for_buffer() is True
         assert peer.handshake is True
         assert peer.buffer == b''
 
-    def test_handle_handshake_fail_incorrect_index(self, peer, info_hash, peer_id):
+    def test_handle_handshake_buffer_fail_incorrect_index(self, peer, info_hash, peer_id):
         peer.buffer = pack(f'!B19s8s20s20s', 32, b'BitTorrent protocol', b'\x00' * 8, info_hash, peer_id)
-        assert peer.handle_handshake() is False
+        assert peer.handle_handshake_for_buffer() is False
         assert peer.handshake is False
 
-    def test_handle_handshake_fail_incorrect_data(self, peer, info_hash):
+    def test_handle_handshake_buffer_fail_incorrect_data(self, peer, info_hash):
         peer.buffer = pack(f'!B19s8s20s20s', 32, b'BitTorrent protocol', b'\x00' * 8, info_hash, b'f3f4f')
-        assert peer.handle_handshake() is False
+        assert peer.handle_handshake_for_buffer() is False
         assert peer.handshake is False
 
     def test_continue_connection(self, peer):
@@ -233,35 +251,70 @@ class TestPeerClass:
         peer.buffer = pack('!I', 3)
         assert peer.handle_continue_connection() is False
 
-    def test_get_message(self, peer):
+    @pytest.mark.asyncio
+    async def test_handle_handshake(self, peer, monkeypatch):
         peer.is_active = True
-        peer.handshake = True
-        message = Message.InterestedMessage()
-        peer.buffer = message.encode()
+        mock_send = AsyncMock()
+        with monkeypatch.context() as m:
+            m.setattr(peer, 'send_message_to_peer', mock_send)
+            result = await peer.handle_handshake()
+        assert result is True
+        assert mock_send.call_count == 1
+        assert isinstance(mock_send.call_args[0][0], Message.HandshakeMessage)
 
-        result = list(peer.get_message())
+    @pytest.mark.asyncio
+    async def test_handle_handshake_fail(self, peer, monkeypatch, caplog):
+        peer.is_active = False
+        mock_send = AsyncMock()
+        with caplog.at_level(logging.ERROR):
+            with monkeypatch.context() as m:
+                m.setattr(peer, 'send_message_to_peer', mock_send)
+                result = await peer.handle_handshake()
+            assert 'Произошла ошибка при handshake-e, пир неактивен' in caplog.text
+            assert result is False
 
-        assert type(result[0]) is type(message)
-        assert peer.buffer == b''
+    @pytest.mark.asyncio
+    async def test_read_socket(self, monkeypatch, peer):
+        reader = AsyncMock()
+        reader.read.return_value = b'xYxYxY'
+        with monkeypatch.context() as m:
+            m.setattr(peer, 'reader', reader)
+            await peer.read_socket()
+        assert peer.buffer == b'xYxYxY'
 
-    def test_get_message_with_many_messages(self, peer, messages):
-        peer.is_active = True
-        peer.handshake = True
-        for message in messages:
-            peer.buffer += message.encode()
+    @pytest.mark.asyncio
+    async def test_read_socket_incorrect(self, monkeypatch, peer, caplog):
+        reader = AsyncMock()
+        reader.read.side_effect = OSError
+        with caplog.at_level(logging.ERROR):
+            with monkeypatch.context() as m:
+                m.setattr(peer, 'reader', reader)
+                await peer.read_socket()
+            assert peer.is_active is False
+            assert 'Таймаут чтения с сокета' in caplog.text
 
-        result = list(peer.get_message())
-        assert len(result) == len(messages)
-        for i in range(0, len(result)):
-            assert type(result[i]) is type(messages[i])
-        assert peer.buffer == b''
+    @pytest.mark.asyncio
+    async def test_handle_message_handshake_and_continue(self, peer, caplog):
+        with caplog.at_level(logging.ERROR):
+            await peer.handle_message(Message.HandshakeMessage(b'\x00' * 32))
+            assert 'Обработка Handshake сообщения производится отдельно' in caplog.text
+            caplog.clear()
+            await peer.handle_message(Message.ContinueConnectionMessage())
+            assert 'Обработка ContinueConnection сообщения производится отдельно' in caplog.text
 
-    def test_get_message_with_handshake_and_continue(self, peer, info_hash):
-        peer.is_active = True
-        peer.buffer = Message.HandshakeMessage(info_hash).encode()
-        peer.buffer = Message.ContinueConnectionMessage().encode()
-        peer.buffer += Message.InterestedMessage().encode()
-        result = list(peer.get_message())
-        assert type(result[0]) is type(Message.InterestedMessage())
-        assert peer.buffer == b''
+    @pytest.mark.asyncio
+    async def test_handle_message_properties(self, peer):
+        await peer.handle_message(Message.ChokedMessage())
+        assert peer.peer_choked is True
+        await peer.handle_message(Message.UnChokedMessage())
+        assert peer.peer_choked is False
+        await peer.handle_message(Message.InterestedMessage())
+        assert peer.peer_interested is True
+        await peer.handle_message(Message.NotInterestedMessage())
+        assert peer.peer_interested is False
 
+    @pytest.mark.asyncio
+    async def test_handle_message_other(self, peer, caplog, monkeypatch):
+        with monkeypatch.context() as m:
+            mock_have = AsyncMock()
+            m.setattr(peer, 'handle_got_piece', mock_have)
