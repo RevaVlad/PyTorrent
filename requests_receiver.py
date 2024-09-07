@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import socket
-import pubsub
+from pubsub import pub
 import bitstring
 
 from peer_connection import PeerConnection
@@ -17,23 +17,26 @@ class PeerReceiver(PeerConnection):
         self.run_task = None
 
     async def get_info_hash(self):
-        if not self.connect():
+        if not await self.connect():
             self.is_active = False
 
         self.run_task = asyncio.create_task(self.run())
-        pubsub.pub.subscribe(self._get_handshake, PeerConnection.GOT_HANDSHAKE_EVENT)
-        for _ in range(100):
+        pub.subscribe(self._get_handshake, self.got_handshake_event)
+        for _ in range(1000):
             await asyncio.sleep(.01)
             if self.info_hash:
                 break
         else:
             self.run_task.cancel()
-        pubsub.pub.unsubscribe(self._get_handshake, PeerConnection.GOT_HANDSHAKE_EVENT)
+        logging.info(f'Got info hash: {self.info_hash}')
+        pub.unsubscribe(self._get_handshake, self.got_handshake_event)
 
         return self.info_hash
 
     def _get_handshake(self, handshake_message):
+        logging.info("Got handshake message")
         self.info_hash = handshake_message.info_hash
+        logging.info("wrote info hash")
 
     def initiate_bitfield(self, number_of_pieces):
         bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
@@ -54,7 +57,7 @@ class PeerReceiver(PeerConnection):
         except (asyncio.TimeoutError, OSError):
             logging.error(f'Socket error: Пир {self.ip}:{self.port} не может быть подключён')
             return False
-        logging.info("Chebureck connected")
+        logging.info("chebureck connected")
         return True
 
 
@@ -101,4 +104,4 @@ class RequestsReceiver:
         if not info_hash:
             return
 
-        pubsub.pub.sendMessage(self.NEW_PEER_EVENT, peer, info_hash)
+        # pub.sendMessage(self.NEW_PEER_EVENT, peer, info_hash)

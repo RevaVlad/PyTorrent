@@ -22,6 +22,7 @@ class TorrentApplication:
         self.torrents = []
         self.torrent_downloaders = []
         self.request_receiver = RequestsReceiver()
+        self.request_receiver.start_server()
 
     def add_peer_by_info_hash(self, peer, info_hash):
         for td in self.torrent_downloaders:
@@ -63,6 +64,9 @@ class TorrentApplication:
                 self.torrent_downloaders.append(torrent_downloader)
                 await torrent_downloader.download_torrent()
 
+            while True:
+                await asyncio.sleep(100)
+
     def close(self):
         self.torrent_downloader.cancel()
 
@@ -77,9 +81,11 @@ class TorrentApplication:
 
 
 if __name__ == '__main__':
+    async def zagl(data):
+        client = TorrentApplication()
+        await client.download(data, Path('./downloaded'), TorrentStatistics(data.total_length, data.total_segments))
+
     # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
-
     data = TorrentData("torrent_files/test.torrent")
-    client = TorrentApplication()
-    asyncio.run(client.download(data, Path('./downloaded'), TorrentStatistics(data.total_length, data.total_segments)))
+    asyncio.run(zagl(data))

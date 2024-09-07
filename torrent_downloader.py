@@ -111,7 +111,7 @@ class Downloader:
         for peer in downloader.peers_strikes:
             self.get_bitfield_from_peer(peer)
 
-    #def send_have_message_to_peers(self, index):
+    def send_have_message_to_peers(self, index):
         asyncio.create_task(self._send_have_message_to_peers_task(index))
 
     async def _send_have_message_to_peers_task(self, index):

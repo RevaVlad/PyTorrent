@@ -115,9 +115,13 @@ class LocalConnections:
     async def make_request(self, _):
         ips = self.regular_exp.findall(os.popen('arp -a').read())
         for ip in ips:
-            await self._add_peer(ip)
+            if ip.startswith('192'):
+                await self._add_peer(ip)
 
     async def _add_peer(self, peer_ip):
         if peer_ip in self._peers:
             return
         await self.new_peers.put((peer_ip, 52656))
+
+    async def close(self):
+        pass
