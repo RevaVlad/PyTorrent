@@ -1,13 +1,13 @@
-import asyncio
 import logging
 import tkinter as tk
 import tk_async_execute as tae
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from main import download_from_torrent_file
+from main import TorrentApplication
 from parser import TorrentData
 from torrent_statistics import TorrentStatWithVariables
+from requests_receiver import RequestsReceiver
 
 
 class TorrentInfo(tk.Frame):
@@ -15,8 +15,7 @@ class TorrentInfo(tk.Frame):
         tk.Frame.__init__(self, parent, *args, **kwargs)
 
         self.stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
-        self.torrent_data = torrent_data
-        self.destination = destination
+        self.torrent = TorrentApplication(torrent_data, destination, self.stat)
 
         self.name = tk.Label(self, text=f"{torrent_data.torrent_name}")
         self.name.pack(side='left')
@@ -28,13 +27,15 @@ class TorrentInfo(tk.Frame):
                                        command=self.cancel_download)
         self.delete_button.pack(side='left')
 
-        self.start_download()
-
-    def start_download(self):
-        tae.async_execute(download_from_torrent_file(self.torrent_data, self.destination, self.stat), wait=False, visible=False, pop_up=False)
+        self.download_window = tae.async_execute(self.torrent.download())
 
     def cancel_download(self):
-        pass
+        self.torrent.close()
+        self.download_window.destroy()
+
+    def destroy(self):
+        self.cancel_download()
+        tk.Frame.destroy(self)
 
 
 class Torrents(tk.Frame):
@@ -42,12 +43,16 @@ class Torrents(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
-        self.torrents = []
+
+        self.torrents_frames = []
+        self.request_receiver = RequestsReceiver(self.torrents_frames)
 
     def add_torrent(self, file_location, destination):
-        torrent_info = TorrentInfo(self, TorrentData(file_location), Path(destination))
+        torrent_data = TorrentData(file_location)
+        torrent_info = TorrentInfo(self, torrent_data, Path(destination))
         torrent_info.pack()
-        self.torrents.append(torrent_info)
+
+        self.torrents_frames.append(torrent_info)
 
 
 class MainApplication(tk.Frame):

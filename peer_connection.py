@@ -15,6 +15,7 @@ class PeerConnection:
     RECEIVE_BLOCK_EVENT = 'sendPiece'  # + ip, args: request, peer
     BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip, args: peer
     HAVE_MESSAGE_EVENT = 'hasMessage'  # + ip, args: index, peer
+    GOT_HANDSHAKE_EVENT = 'gotHandshakeEvent'
 
     def __init__(self, ip, number_of_pieces: int, info_hash, port=6881):
         self.ip = ip
@@ -159,13 +160,14 @@ class PeerConnection:
     def handle_handshake_for_buffer(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
             handshake_message = Message.HandshakeMessage.decode(self.buffer[:68])
+            pub.sendMessage(PeerConnection.GOT_HANDSHAKE_EVENT, handshake_message)
             self.handshake = True
             self.buffer = self.buffer[68:]
             return True
         return False
 
     def handle_continue_connection(self) -> bool:
-        if len(self.buffer) >= 4 and unpack('!I', self.buffer[0:4])[0] == 0:
+        if len(self.buffer) >= 4 and unpack('!I', self.buffer[:4])[0] == 0:
             continue_connection_message = Message.ContinueConnectionMessage.decode(self.buffer[:4])
             self.buffer = self.buffer[4:]
             return True

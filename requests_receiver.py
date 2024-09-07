@@ -1,14 +1,53 @@
-import socket, asyncio, logging, upnpy
+import asyncio
+import logging
+import socket
+import pubsub
+import bitstring
+
 from peer_connection import PeerConnection
 
 
 class PeerReceiver(PeerConnection):
 
-    def __init__(self, socket, client_address, number_of_pieces: int, info_hash):
-        self.sock = socket
-        super().__init__(client_address[0], number_of_pieces, info_hash, client_address[1])
+    def __init__(self, sock, address):
+        PeerConnection.__init__(self, address[0], 0, '', address[1])
+        self.sock = sock
+        self.already_connected = False
+
+        self.run_task = None
+
+    async def get_info_hash(self):
+        if not self.connect():
+            self.is_active = False
+
+        self.run_task = asyncio.create_task(self.run())
+        pubsub.pub.subscribe(self._get_handshake, PeerConnection.GOT_HANDSHAKE_EVENT)
+        for _ in range(100):
+            await asyncio.sleep(.01)
+            if self.info_hash:
+                break
+        else:
+            self.run_task.cancel()
+        pubsub.pub.unsubscribe(self._get_handshake, PeerConnection.GOT_HANDSHAKE_EVENT)
+
+        return self.info_hash
+
+    def _get_handshake(self, handshake_message):
+        self.info_hash = handshake_message.info_hash
+
+    def initiate_bitfield(self, number_of_pieces):
+        bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
+        self.bitfield = bitstring.BitArray(bitfield_length)
+
+    def close(self):
+        if self.run_task:
+            self.run_task.cancel()
+        PeerConnection.close(self)
 
     async def connect(self) -> bool:
+        if self.already_connected:
+            return True
+
         try:
             self.reader, self.writer = await asyncio.open_connection(sock=self.sock)
             self.is_active = True
@@ -20,12 +59,12 @@ class PeerReceiver(PeerConnection):
 
 
 class RequestsReceiver:
+    NEW_PEER_EVENT = 'newPeerReceived'
     ACCEPT_TIMEOUT = 100
 
-    def __init__(self, torrent_data):
+    def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.available_peers = asyncio.Queue()
-        self.torrent = torrent_data
         self.sock.bind(('', 52656))
 
         self._task = None
@@ -51,10 +90,15 @@ class RequestsReceiver:
                 try:
                     client_sock, client_addr = await asyncio.wait_for(loop.sock_accept(self.sock),
                                                                       timeout=RequestsReceiver.ACCEPT_TIMEOUT)
-                    logging.info(f"New chebureck: {client_addr}")
-                    await self.available_peers.put(PeerReceiver(client_sock,
-                                                                client_addr,
-                                                                self.torrent.total_segments,
-                                                                self.torrent.info_hash))
+                    await self.add_peer(client_sock, client_addr)
+                    await self.available_peers.put((client_sock, client_addr))
                 except asyncio.TimeoutError:
                     logging.info("Timeout")
+
+    async def add_peer(self, sock, address):
+        peer = PeerReceiver(sock, address)
+        info_hash = await peer.get_info_hash()
+        if not info_hash:
+            return
+
+        pubsub.pub.sendMessage(self.NEW_PEER_EVENT, peer, info_hash)

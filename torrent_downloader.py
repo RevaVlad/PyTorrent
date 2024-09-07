@@ -125,11 +125,14 @@ class Downloader:
             if len(self.active_peers) < Downloader.MAX_PEER_COUNT:
                 result = True
                 while result:
-                    result = await self._add_peer()
+                    result = await self._add_peer_from_queue()
             await asyncio.sleep(.01)
 
-    async def _add_peer(self):
+    async def _add_peer_from_queue(self):
         peer = await self.peer_queue.get()
+        await self.add_peer(peer)
+
+    async def add_peer(self, peer):
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
@@ -143,7 +146,6 @@ class Downloader:
                 if not isinstance(peer, PeerReceiver):
                     self.check_for_unchoked(peer)
                 return True
-
         logging.error('Возникли проблемы с установлением соединения с пиром')
         return False
 
