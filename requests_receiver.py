@@ -1,6 +1,5 @@
 import socket, asyncio, logging, upnpy
 from peer_connection import PeerConnection
-from upnpy import UPnP
 
 
 class PeerReceiver(PeerConnection):
@@ -27,51 +26,9 @@ class RequestsReceiver:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.available_peers = asyncio.Queue()
         self.torrent = torrent_data
+        self.sock.bind(('', 0))
 
-        upnp = UPnP()
-
-        devices = upnp.discover()
-
-        if devices:
-
-            device = devices[0]
-
-            wan_ip_connection = device['WANIPConn1']
-
-            if wan_ip_connection:
-                external_port = 52656  # Порт на роутере
-                internal_port = 52656  # Порт на компе
-                internal_client = '192.168.1.108'
-                protocol = 'TCP'
-                description = 'Port Forwarding'
-
-                try:
-                    print(wan_ip_connection.get_actions())
-                    # wan_ip_connection.DeletePortMapping(
-                    #     NewRemoteHost='',
-                    #     NewExternalPort=external_port,
-                    #     NewProtocol=protocol
-                    # )
-                    # print("Deleted port mapping")
-                    wan_ip_connection.AddPortMapping(
-                        NewRemoteHost='',
-                        NewExternalPort=external_port,
-                        NewProtocol=protocol,
-                        NewInternalPort=internal_port,
-                        NewInternalClient=internal_client,
-                        NewPortMappingDescription=description,
-                        NewEnabled=False,
-                        NewLeaseDuration=10000
-                    )
-                    print(f'Порт {external_port} успешно открыт на {internal_client}')
-                except Exception as e:
-                    print(f'Не удалось открыть порт: {e}')
-            else:
-                print('Снова нифига не получилось')
-        else:
-            print('Устройства с поддержкой UPnP не найдены')
-
-        self.sock.bind(('192.168.1.108', 52656))
+        self._task = None
 
     @property
     def port(self):
@@ -79,9 +36,12 @@ class RequestsReceiver:
 
     async def close(self):
         self.sock.close()
-        await super().close()
+        self._task.cancel()
 
-    async def run_server(self):
+    def start_server(self):
+        self._task = asyncio.create_task(self._run_server())
+
+    async def _run_server(self):
         self.sock.listen(1)
         self.sock.setblocking(False)
 

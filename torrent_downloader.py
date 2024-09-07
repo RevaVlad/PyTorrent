@@ -111,7 +111,7 @@ class TorrentDownloader:
         for peer in downloader.peers_strikes:
             self.get_bitfield_from_peer(peer)
 
-    def send_have_message_to_peers(self, index):
+    #def send_have_message_to_peers(self, index):
         asyncio.create_task(self._send_have_message_to_peers_task(index))
 
     async def _send_have_message_to_peers_task(self, index):
@@ -130,7 +130,6 @@ class TorrentDownloader:
 
     async def _add_peer(self):
         peer = await self.peer_queue.get()
-        # peer = PeerConnection(peer_ip, self.torrent.total_segments, self.torrent.info_hash, peer_port)
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
@@ -206,9 +205,9 @@ class TorrentDownloader:
 
     async def block_peer(self, peer):
         if peer in self.active_peers:
+            self.active_peers.remove(peer)
             await self.remove_peer_from_available_segments(peer)
             await peer.close()
-            self.active_peers.remove(peer)
 
     async def remove_peer_from_available_segments(self, peer):
         for i in range(len(self.available_segments)):

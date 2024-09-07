@@ -84,7 +84,7 @@ class PeerConnection:
             return True
         except OSError as e:
             self.is_active = False
-            logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
+            #logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
             return False
 
     # region Properties

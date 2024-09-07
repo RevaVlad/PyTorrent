@@ -34,14 +34,12 @@ async def download_from_torrent_file(torrent_file: TorrentData, destination: Pat
             logging.info(f"Port: {requests_receiver.port}")
             requests_receiver.start_server()
 
-            # asyncio.create_task(zaglushka(requests_receiver.available_peers, trackers_manager.available_peers))
-
             logging.info("Created all objects")
             # trackers_manager.create_peers_update_task()
             torrent_downloader = TorrentDownloader(torrent_file,
                                                    file_writer,
                                                    torrent_statistics,
-                                                   requests_receiver.available_peers)
+                                                   trackers_manager.available_peers)
             await torrent_downloader.download_torrent()
             while True:
                 await asyncio.sleep(.1)
@@ -85,7 +83,7 @@ def get_previous_torrents(pickle_file_name):
 def save_current_torrents(pickle_file_name, torrents):
     project_directory = Path(sys.path[0])
     location = project_directory / pickle_file_name
-    if not (location).exists():
+    if not location.exists():
         location.open('w').close()
     with open(location, 'wb') as f:
         pickle.dump(torrents, f)
