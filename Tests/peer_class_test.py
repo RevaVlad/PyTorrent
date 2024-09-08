@@ -315,6 +315,19 @@ class TestPeerClass:
 
     @pytest.mark.asyncio
     async def test_handle_message_other(self, peer, caplog, monkeypatch):
-        with monkeypatch.context() as m:
-            mock_have = AsyncMock()
-            m.setattr(peer, 'handle_got_piece', mock_have)
+        with caplog.at_level(logging.INFO):
+            with monkeypatch.context() as m:
+                mock = AsyncMock()
+                m.setattr(peer, 'handle_got_piece', mock)
+                message = Message.HaveMessage(1)
+                await peer.handle_message(message)
+                assert 'got have message' in caplog.text
+                assert mock.call_count == 1
+                assert isinstance(mock.call_args[0][0], Message.HaveMessage)
+                caplog.clear()
+                message = Message.PeerSegmentsMessage(bitstring.BitArray(8))
+                m.setattr(peer, 'handle_got_piece', mock)
+                await peer.handle_message(message)
+                assert 'got peer segment message' in caplog.text
+                assert mock.call_count == 2
+
