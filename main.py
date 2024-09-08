@@ -13,6 +13,7 @@ from pathlib import Path
 from peer_connection import PeerConnection
 from priority_queue import PriorityQueue
 from requests_receiver import RequestsReceiver
+from pubsub import pub
 
 
 class TorrentApplication:
@@ -21,14 +22,19 @@ class TorrentApplication:
     def __init__(self):
         self.torrents = []
         self.torrent_downloaders = []
+
         self.request_receiver = RequestsReceiver()
         self.request_receiver.start_server()
+        pub.subscribe(self.add_peer_by_info_hash, self.request_receiver.NEW_PEER_EVENT)
 
     def add_peer_by_info_hash(self, peer, info_hash):
+        asyncio.create_task(self._add_peer_coro(peer, info_hash))
+
+    async def _add_peer_coro(self, peer, info_hash):
         for td in self.torrent_downloaders:
             if td.torrent.info_hash == info_hash:
-                peer.initiate_bitfield(td.torrent.total_segments)
-                td.add_peer(peer)
+                await peer.initiate_bitfield(td.torrent.total_segments, td.torrent_statistics.bitfield)
+                await td.add_peer(peer)
 
     def get_previous_torrents(self):
         file = Path(sys.path[0]) / self.PICKLE_FILENAME
@@ -53,7 +59,7 @@ class TorrentApplication:
 
         with FileWriter(torrent_data, destination=destination) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
-                                      self.request_receiver.port, use_local=True) as trackers_manager:
+                                      self.request_receiver.port, use_local=False) as trackers_manager:
                 trackers_manager.create_peers_update_task()
 
                 logging.info("Created all objects")
@@ -68,7 +74,8 @@ class TorrentApplication:
                 await asyncio.sleep(100)
 
     def close(self):
-        self.torrent_downloader.cancel()
+        for td in self.torrent_downloaders:
+            td.cancel()
 
     @staticmethod
     async def queue_update_task(source_queues: list[asyncio.Queue], queue_target: PriorityQueue, priority=True):

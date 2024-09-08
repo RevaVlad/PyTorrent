@@ -153,6 +153,7 @@ class Downloader:
         asyncio.create_task(self._send_bitfield_to_peer_task(peer))
 
     async def _send_bitfield_to_peer_task(self, peer:  PeerConnection):
+        logging.info(f"Sending bitfield: {self.torrent_statistics.bitfield}")
         message = Message.PeerSegmentsMessage(self.torrent_statistics.bitfield)
         await peer.send_message_to_peer(message)
 

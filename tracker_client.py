@@ -113,10 +113,13 @@ class LocalConnections:
         self.new_peers = asyncio.Queue()
 
     async def make_request(self, _):
+        '''
         ips = self.regular_exp.findall(os.popen('arp -a').read())
         for ip in ips:
             if ip.startswith('192'):
                 await self._add_peer(ip)
+        '''
+        await self._add_peer('192.168.45.8')
 
     async def _add_peer(self, peer_ip):
         if peer_ip in self._peers:

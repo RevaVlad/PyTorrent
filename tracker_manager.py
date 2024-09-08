@@ -27,8 +27,10 @@ class TrackerManager:
         if use_local:
             self._add_tracker('local')
 
+        '''
         for url in torrent_data.trackers:
             self._add_tracker(url)
+        '''
 
     def _create_peer_id(self):
         return '-PC0001-' + hashlib.sha1(self.info_hash).digest().hex()[:12]
