@@ -1,5 +1,4 @@
 import heapq
-import time
 
 
 class PriorityQueue:
@@ -31,20 +30,3 @@ class PriorityQueue:
 
     def __len__(self):
         return len(self.entry_finder)
-
-
-if __name__ == '__main__':
-    x = time.time()
-    pq = PriorityQueue()
-    pq.push(1, 'x')
-    pq.push(3, 'y')
-    for _ in range(1000000 // 3):
-        pq.push(2, 'z')
-        pq.push(1, 'y')
-        pq.push(5, 'x')
-
-    pq.push(4, 'x')
-
-    while len(pq):
-        print(pq.pop())
-    print(f'Time taken: {time.time() - x}')
