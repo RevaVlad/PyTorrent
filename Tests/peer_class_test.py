@@ -174,7 +174,7 @@ class TestPeerClass:
 
     @pytest.mark.asyncio
     async def test_handle_available_piece(self, monkeypatch, peer):
-        peer.bitfield = bitstring.BitArray(bin='01')
+        peer.bitfield = bitstring.BitArray(bin='00')
         with monkeypatch.context() as m:
             mock_pubsub = AsyncMock()
             m.setattr(pub, 'sendMessage', mock_pubsub)
@@ -183,7 +183,7 @@ class TestPeerClass:
             message = Message.PeerSegmentsMessage(bitstring.BitArray(bin='10'))
             await peer.handle_available_piece(message)
         assert peer.interested is True
-        assert peer.bitfield == bitstring.BitArray(bin='11')
+        assert peer.bitfield == bitstring.BitArray(bin='10')
         mock_pubsub.assert_called_once_with(
             peer.bitfield_update_event,
             peer=peer
@@ -326,8 +326,42 @@ class TestPeerClass:
                 assert isinstance(mock.call_args[0][0], Message.HaveMessage)
                 caplog.clear()
                 message = Message.PeerSegmentsMessage(bitstring.BitArray(8))
-                m.setattr(peer, 'handle_got_piece', mock)
+                m.setattr(peer, 'handle_available_piece', mock)
                 await peer.handle_message(message)
-                assert 'got peer segment message' in caplog.text
+                assert 'got peer segments message' in caplog.text
                 assert mock.call_count == 2
+                assert isinstance(mock.call_args[0][0], Message.PeerSegmentsMessage)
+                caplog.clear()
+                m.setattr(peer, 'handle_piece_request', mock)
+                message = Message.RequestsMessage(1, 1, 2)
+                await peer.handle_message(message)
+                assert mock.call_count == 3
+                assert isinstance(mock.call_args[0][0], Message.RequestsMessage)
+                caplog.clear()
+                m.setattr(peer, 'handle_piece_receive', mock)
+                message = Message.SendPieceMessage(1, 1, b'22')
+                await peer.handle_message(message)
+                assert mock.call_count == 4
+                assert isinstance(mock.call_args[0][0], Message.SendPieceMessage)
+                message = Message.CancelMessage(1, 1, 2)
+                await peer.handle_message(message)
+                assert 'got cancel message' in caplog.text
 
+    @pytest.mark.asyncio
+    async def test_handle_message_fail(self, peer, caplog):
+        with caplog.at_level(logging.ERROR):
+            messages = 'fdfdfdfdfdfd'
+            await peer.handle_message(messages)
+            assert 'Такого типа сообщения нет str'
+
+    @pytest.mark.asyncio
+    async def test_close_connection(self, monkeypatch, peer):
+        mock_writer_close = AsyncMock()
+        mock_reader = AsyncMock
+        with monkeypatch.context() as m:
+            m.setattr(peer, 'writer', mock_writer_close)
+            m.setattr(peer, 'reader', mock_reader)
+            await peer.close()
+            assert peer.is_active is False
+            assert peer.reader is None
+            assert mock_writer_close.close.call_count == 1
