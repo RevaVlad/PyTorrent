@@ -1,10 +1,18 @@
 import asyncio
 import hashlib
 import logging
+import bencode
 from asyncio import Queue
 from tracker_client import HttpTrackerClient, TrackerEvent, LocalConnections
 from peer_connection import PeerConnection
 from contextlib import suppress
+
+
+class BadTorrentTrackers(Exception):
+    def __init__(self, message, bad_trackers):
+        # Call the base class constructor with the parameters it needs
+        super().__init__(message)
+        self.bad_trackers = bad_trackers
 
 
 class TrackerManager:
@@ -27,10 +35,8 @@ class TrackerManager:
         if use_local:
             self._add_tracker('local')
 
-        '''
         for url in torrent_data.trackers:
             self._add_tracker(url)
-        '''
 
     def _create_peer_id(self):
         return '-PC0001-' + hashlib.sha1(self.info_hash).digest().hex()[:12]
@@ -42,16 +48,17 @@ class TrackerManager:
                                                           self.peer_id,
                                                           self.port,
                                                           self.segment_info))
-        elif url == 'local':
+        if url == 'local':
             self.tracker_clients.append(LocalConnections())
 
     async def __aenter__(self):
+        logging.info("Starting trackers")
+
         bad_trackers = []
         for tracker in self.tracker_clients:
             try:
                 await tracker.make_request(TrackerEvent.STARTED)
-            except (ConnectionError, NotImplementedError) as e:
-                logging.error(str(e))
+            except (ConnectionError, TimeoutError, bencode.BencodeDecodeError) as e:
                 bad_trackers.append(tracker)
             except asyncio.TimeoutError as e:
                 logging.error(f"Timeout error for tracker: {tracker.url}")
@@ -59,6 +66,9 @@ class TrackerManager:
 
         for bad_tracker in bad_trackers:
             self.tracker_clients.remove(bad_tracker)
+
+        if not self.tracker_clients:
+            raise BadTorrentTrackers("Torrent file had no stable trackers", bad_trackers)
 
         return self
 

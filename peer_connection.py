@@ -11,21 +11,25 @@ from struct import unpack
 
 
 class PeerConnection:
-    REQUEST_PIECE_EVENT = 'requestPiece'  # + ip, args: message, peer
-    RECEIVE_BLOCK_EVENT = 'sendPiece'  # + ip, args: request, peer
-    BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip, args: peer
-    HAVE_MESSAGE_EVENT = 'hasMessage'  # + ip, args: index, peer
+    ID = 0
+
+    REQUEST_PIECE_EVENT = 'requestPiece'  # + ip + id, args: message, peer
+    RECEIVE_BLOCK_EVENT = 'sendPiece'  # + ip + id, args: request, peer
+    BITFIELD_UPDATE_EVENT = 'bitfieldUpdate'  # + ip + id, args: peer
+    HAVE_MESSAGE_EVENT = 'hasMessage'  # + ip + id, args: index, peer
 
     def __init__(self, ip, number_of_pieces: int, info_hash, port=6881):
+        PeerConnection.ID += 1
+
         self.ip = ip
         self.port = port
         self.number_of_pieces = number_of_pieces
         self.info_hash = info_hash
 
-        self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip
-        self.request_event = PeerConnection.REQUEST_PIECE_EVENT + ip
-        self.bitfield_update_event = PeerConnection.BITFIELD_UPDATE_EVENT + ip
-        self.have_message_event = PeerConnection.HAVE_MESSAGE_EVENT + ip
+        self.receive_event = PeerConnection.RECEIVE_BLOCK_EVENT + ip + str(PeerConnection.ID)
+        self.request_event = PeerConnection.REQUEST_PIECE_EVENT + ip + str(PeerConnection.ID)
+        self.bitfield_update_event = PeerConnection.BITFIELD_UPDATE_EVENT + ip + str(PeerConnection.ID)
+        self.have_message_event = PeerConnection.HAVE_MESSAGE_EVENT + ip + str(PeerConnection.ID)
 
         bitfield_length = number_of_pieces if number_of_pieces % 8 == 0 else number_of_pieces + 8 - number_of_pieces % 8
         self.bitfield = bitstring.BitArray(bitfield_length)
@@ -35,6 +39,7 @@ class PeerConnection:
         self.reader = None
         self.writer = None
         self.buffer = b''
+        self.socket_lock = asyncio.Lock()
 
         self._peer_interested = False
         self._peer_choked = True
@@ -71,7 +76,8 @@ class PeerConnection:
         return True
 
     async def send_message_to_peer(self, message: Message.Message) -> bool:
-        logging.info(message)
+        if isinstance(message, Message.SendPieceMessage):
+            logging.info("Sending block")
         if not self.handshake:
             allowed_messages = (
                 Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
@@ -159,9 +165,7 @@ class PeerConnection:
 
     def handle_handshake_for_buffer(self) -> bool:
         if len(self.buffer) >= 68 and unpack('!B', self.buffer[:1])[0] == 19:
-            logging.info("Got handshake!")
             handshake_message = Message.HandshakeMessage.decode(self.buffer[:68])
-            logging.info('Sent event')
             self.handshake = True
             self.buffer = self.buffer[68:]
             return True
@@ -183,7 +187,7 @@ class PeerConnection:
             self.is_active = False
 
     async def run(self):
-        # self.peer_interested = True
+        self.peer_interested = True
 
         if not self.interested and self.bitfield.any(True):
             await self.send_message_to_peer(Message.InterestedMessage())
