@@ -1,4 +1,3 @@
-import pytest
 from priority_queue import PriorityQueue
 
 
