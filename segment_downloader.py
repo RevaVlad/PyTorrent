@@ -11,38 +11,65 @@ from peer_connection import PeerConnection
 from block import Block
 
 
-class DownloadResult(Enum):
-    PENDING = 0
-    FAILED = 1
-    COMPLETED = 2
+class SegmentDownloadStatus(Enum):
+    NOT_STARTED = 0
+    PENDING = 1
+    FAILED = 2
+    SUCCESS = 3
+
+
+class Segment:
+    def __init__(self, id):
+        self.id = id
+
+        self.is_downloaded = False
+        self.peers = []
+        self.peers_count = 0
+        self._status = SegmentDownloadStatus.NOT_STARTED
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, value: SegmentDownloadStatus):
+        self._status = value
+
+    def add_peer(self, peer):
+        self.peers.append(peer)
+        self.peers_count += 1
+
+    def remove_peer(self, peer):
+        self.peers.remove(peer)
+        self.peers_count -= 1
 
 
 class SegmentDownloader:
     MAX_STRIKES_PER_PEER = 5
     MAX_PENDING_BLOCKS = 5
 
-    PEER_DELETION_EVENT = 'peerDeleted'  # + segment_id, args: segment_downloader
-    DOWNLOADING_STOPPED_EVENT = 'downloadingStopped'  # + segment_id, args: segment_downloader
+    PEER_DELETION_EVENT = 'peerDeleted'  # + segment.id, args: segment_downloader
+    DOWNLOADING_STOPPED_EVENT = 'downloadingStopped'  # + segment.id, args: segment_downloader
 
-    def __init__(self, segment_id, torrent_data: parser.TorrentData,
+    def __init__(self, segment, torrent_data: parser.TorrentData,
                  file_writer, torrent_statistics, peers: list[PeerConnection]):
         self.torrent_data = torrent_data
         self.file_writer = file_writer
         self.torrent_stat = torrent_statistics
-        self.segment_id = segment_id
-        self.download_result = DownloadResult.PENDING
+        self.segment = segment
+        self.download_result = SegmentDownloadStatus.PENDING
 
-        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment_id)
-        self.downloading_stopped_event = SegmentDownloader.DOWNLOADING_STOPPED_EVENT + str(segment_id)
+        self.peer_deletion_event = SegmentDownloader.PEER_DELETION_EVENT + str(segment.id)
+        self.downloading_stopped_event = SegmentDownloader.DOWNLOADING_STOPPED_EVENT + str(segment.id)
 
-        segment_length = torrent_data.segment_length if segment_id != torrent_data.total_segments - 1 \
+        segment_length = torrent_data.segment_length if segment.id != torrent_data.total_segments - 1 \
             else torrent_data.total_length % torrent_data.segment_length
 
         self.blocks_count = math.ceil(segment_length / Block.BLOCK_LENGTH)
 
         self.downloaded_blocks = set()
-        self.missing_blocks = ([Block(self.segment_id, i * Block.BLOCK_LENGTH) for i in range(self.blocks_count - 1)] +
-                               [Block(self.segment_id, (self.blocks_count - 1) * Block.BLOCK_LENGTH,
+        self.missing_blocks = ([Block(self.segment.id, i * Block.BLOCK_LENGTH) for i in range(self.blocks_count - 1)] +
+                               [Block(self.segment.id, (self.blocks_count - 1) * Block.BLOCK_LENGTH,
                                       segment_length % Block.BLOCK_LENGTH)])
 
         self.tasks = {peer: set() for peer in peers}
@@ -71,14 +98,14 @@ class SegmentDownloader:
             await asyncio.sleep(.01)
 
         data = self.assemble_segment()
-        if hashlib.sha1(data).digest() != self.torrent_data.segments_hash[self.segment_id]:
-            self.download_result = DownloadResult.FAILED
+        if hashlib.sha1(data).digest() != self.torrent_data.segments_hash[self.segment.id]:
+            self.segment.status = SegmentDownloadStatus.FAILED
             pub.sendMessage(self.downloading_stopped_event, downloader=self)
             return
 
         self.torrent_stat.update_downloaded(len(data))
-        self.download_result = DownloadResult.COMPLETED
-        await self.file_writer.write_segment(self.segment_id, data)
+        self.segment.status = SegmentDownloadStatus.SUCCESS
+        await self.file_writer.write_segment(self.segment.id, data)
         pub.sendMessage(self.downloading_stopped_event, downloader=self)
 
     def check_tasks_completion(self):

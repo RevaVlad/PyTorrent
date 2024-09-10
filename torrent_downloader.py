@@ -4,7 +4,7 @@ import logging
 import bitstring
 
 import Message
-from segment_downloader import SegmentDownloader, DownloadResult
+from segment_downloader import SegmentDownloader, SegmentDownloadStatus, Segment
 from peer_connection import PeerConnection
 from pubsub import pub
 from priority_queue import PriorityQueue
@@ -13,6 +13,7 @@ from requests_receiver import PeerReceiver
 
 class Downloader:
     MAX_PEER_COUNT = 50
+    MAX_PEER_PEERS_PER_SEGMENT = 1
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
     def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):
@@ -26,7 +27,7 @@ class Downloader:
 
         self._peer_connection_task = None
 
-        self.available_segments = [[0, [], False] for _ in range(torrent.total_segments)]
+        self.available_segments = [Segment(i) for i in range(torrent.total_segments)]
         self.available_segments_lock = asyncio.Lock()
 
         self._segment_heap = PriorityQueue()
@@ -38,20 +39,23 @@ class Downloader:
     async def download_torrent(self, seed=True):
         await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
-        while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
+        while any(segment.status != SegmentDownloadStatus.SUCCESS for segment in self.available_segments):
             await asyncio.sleep(.1)
 
             if len(self._segment_downloaders) < Downloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id, finding_result = await self.try_find_rarest_segment()
                 if not finding_result:
                     continue
-                peers_info = self.available_segments[segment_id]
-                peers = peers_info[1][:1]
+
+                peers_with_segment = self.available_segments[segment_id].peers
+                peers = peers_with_segment[:self.MAX_PEER_PEERS_PER_SEGMENT]
 
                 for peer in peers:
                     await self.remove_peer_from_available_segments(peer)
 
-                self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
+                self.available_segments[segment_id].status = SegmentDownloadStatus.PENDING
+                self._segment_downloaders.append(self.start_segment_download(self.available_segments[segment_id],
+                                                                             peers))
 
             await asyncio.sleep(.1)
 
@@ -62,14 +66,11 @@ class Downloader:
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
             if await self.file_writer.check_segment_download(i):
-
-                # TODO: Потому что иначе статистика не обновляется, потому что надо было перенести этот метод в
-                #  file_writer!!!
                 segment_length = self.torrent.segment_length if i != self.torrent.total_segments - 1 \
                     else self.torrent.total_length % self.torrent.segment_length
                 self.torrent_statistics.update_downloaded(segment_length)
 
-                self.available_segments[i][2] = True
+                self.available_segments[i].status = SegmentDownloadStatus.SUCCESS
                 self.torrent_statistics.update_bitfield(i, True)
         logging.info(self.torrent_statistics.bitfield.bin)
 
@@ -78,16 +79,17 @@ class Downloader:
             return None, False
 
         count, rarest_index = self._segment_heap.pop()
-        if self.available_segments[rarest_index][2] is False and self.available_segments[rarest_index][0] != 0:
+        segment = self.available_segments[rarest_index]
+        if (segment.status == SegmentDownloadStatus.NOT_STARTED
+                and segment.peers_count > 0):
             logging.info(f"Found not yet downloaded segment! Next segment is: {rarest_index}")
             return rarest_index, True
         else:
             self._segment_heap.push(count, rarest_index)
             return None, False
 
-    def start_segment_download(self, segment_id, peers) -> SegmentDownloader:
-        self.available_segments[segment_id][2] = True
-        downloader = SegmentDownloader(segment_id=segment_id, torrent_data=self.torrent,
+    def start_segment_download(self, segment, peers) -> SegmentDownloader:
+        downloader = SegmentDownloader(segment, torrent_data=self.torrent,
                                        file_writer=self.file_writer,
                                        torrent_statistics=self.torrent_statistics,
                                        peers=peers)
@@ -99,20 +101,21 @@ class Downloader:
         return downloader
 
     def on_download_end(self, downloader):
-        logging.info(f"Segment {downloader.segment_id} download was canceled...")
-        if downloader.download_result == DownloadResult.COMPLETED:
+        segment = downloader.segment
+        logging.info(f"Segment {segment.id} download was canceled...")
+        if segment.status == SegmentDownloadStatus.SUCCESS:
             logging.info("Because it downloaded correctly!!!")
-            self.torrent_statistics.update_bitfield(downloader.segment_id, True)
-            self.send_have_message_to_peers(downloader.segment_id)
-        elif downloader.download_result == DownloadResult.FAILED:
-            self.available_segments[downloader.segment_id][2] = False
+            self.torrent_statistics.update_bitfield(segment.segment_id, True)
+            self.send_have_message_to_peers(segment.segment_id)
+        elif segment.status == SegmentDownloadStatus.FAILED:
             logging.error("Because it failed :(")
-            self._segment_heap.push(self.available_segments[downloader.segment_id][0], downloader.segment_id)
+            segment.status = SegmentDownloadStatus.NOT_STARTED
+            self._segment_heap.push(self.available_segments[segment.id].peers_count, segment.id)
 
         if downloader in self._segment_downloaders:
             self._segment_downloaders.remove(downloader)
             logging.info(f"Removing downloader: {downloader}")
-        for peer in downloader.peers_strikes:
+        for peer in downloader.peers:
             self.get_bitfield_from_peer(peer)
 
     def send_have_message_to_peers(self, index):
@@ -190,22 +193,19 @@ class Downloader:
         asyncio.create_task(self._get_bitfield_from_peer_task(peer))
 
     async def _get_bitfield_from_peer_task(self, peer):
-        async with self.available_segments_lock:
-            for i in range(len(self.available_segments)):
-                if peer.bitfield[i] == 1:
-                    self.available_segments[i][0] += 1
-                    self.available_segments[i][1].append(peer)
-                    self._segment_heap.push(self.available_segments[i][0], i)
-            self.bitfield_active = True
+        for segment in self.available_segments:
+            if peer.bitfield[segment.id] == 1:
+                segment.add_peer(peer)
+                self._segment_heap.push(segment.peers_count, segment.id)
+        self.bitfield_active = True
 
     def get_have_message_from_peer(self, peer, index):
         asyncio.create_task(self._get_have_message_from_peer_task(peer, index))
 
     async def _get_have_message_from_peer_task(self, peer, index):
-        async with self.available_segments_lock:
-            self.available_segments[index][0] += 1
-            self.available_segments[index][1].append(peer)
-            self._segment_heap.push(self.available_segments[index][0], index)
+        segment = self.available_segments[index]
+        segment.add_peer(peer)
+        self._segment_heap.push(segment.peers_count, index)
         self.bitfield_active = True
 
     async def block_peer(self, peer):
@@ -215,15 +215,13 @@ class Downloader:
             await peer.close()
 
     async def remove_peer_from_available_segments(self, peer):
-        for i in range(len(self.available_segments)):
-            if peer in self.available_segments[i][1]:
-                async with self.available_segments_lock:
-                    self.available_segments[i][0] -= 1
-                    self.available_segments[i][1].remove(peer)
-                    self._segment_heap.push(self.available_segments[i][0], i)
+        for segment in self.available_segments:
+            if peer in segment.peers:
+                segment.remove_peer(peer)
+                self._segment_heap.push(segment.peers_count, segment.id)
 
     def replace_peer(self, segment_downloader: SegmentDownloader):
-        other_peers = self.available_segments[segment_downloader.segment_id][1]
+        other_peers = self.available_segments[segment_downloader.segment_id].peers
         if any(other_peers):
             logging.info(f"Replacing peer for downloader of segment {segment_downloader.segment_id}")
             peer = other_peers.pop(0)
