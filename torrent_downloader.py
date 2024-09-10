@@ -38,7 +38,7 @@ class Downloader:
     async def download_torrent(self, seed=True):
         await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
-        while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
+        while any(segment[2] is False for segment in self.available_segments) or self._segment_downloaders:
             await asyncio.sleep(.1)
 
             if len(self._segment_downloaders) < Downloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:

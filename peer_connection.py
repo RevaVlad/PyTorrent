@@ -216,9 +216,9 @@ class PeerConnection:
     async def handle_message(self, new_message):
         match new_message:
             case Message.HandshakeMessage():
-                logging.error(f'Обработка Handshake сообщения производится отедльно')
+                logging.error(f'Обработка Handshake сообщения производится отдельно')
             case Message.ContinueConnectionMessage():
-                logging.error(f'Обработка ContinueConnection сообщения производится отедльно')
+                logging.error(f'Обработка ContinueConnection сообщения производится отдельно')
             case Message.ChokedMessage():
                 self.peer_choked = True
             case Message.UnChokedMessage():

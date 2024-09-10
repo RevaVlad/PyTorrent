@@ -1,9 +1,11 @@
 import logging
+import socket
 
 import bitstring
 import pytest
 import Message
 from struct import pack
+from random import randint
 
 
 @pytest.fixture
@@ -40,6 +42,31 @@ def index():
 @pytest.fixture
 def byte_offset():
     return 5
+
+@pytest.fixture
+def sample_announce_response():
+    action = 1
+    transaction_id = 12345
+    interval = 1800
+    leechers = 50
+    seeders = 100
+
+    peer1_ip = socket.inet_aton('192.168.1.1')
+    peer1_port = pack('!H', 6881)
+    peer2_ip = socket.inet_aton('192.168.1.2')
+    peer2_port = pack('!H', 6882)
+
+    message = (
+            pack('!I', action) +
+            pack('!I', transaction_id) +
+            pack('!I', interval) +
+            pack('!I', leechers) +
+            pack('!I', seeders) +
+            peer1_ip + peer1_port +
+            peer2_ip + peer2_port
+    )
+
+    return message
 
 
 @pytest.fixture
