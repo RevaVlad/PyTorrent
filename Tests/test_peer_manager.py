@@ -1,8 +1,8 @@
 import logging
 import pytest
 import asyncio
-from unittest.mock import AsyncMock
-from tracker_manager import TrackerManager, HttpTrackerClient
+from unittest.mock import AsyncMock, MagicMock
+from tracker_manager import TrackerManager, HttpTrackerClient, BadTorrentTrackers
 import tracker_client
 
 
@@ -42,36 +42,22 @@ class TestTrackerManager:
                 mock_http_tracker.make_request.assert_called_once_with(tracker_client.TrackerEvent.STARTED)
 
     @pytest.mark.asyncio
-    async def test_tracker_manager_aenter_error(self, monkeypatch, tracker_manager, caplog):
-        with caplog.at_level(logging.ERROR):
-            with monkeypatch.context() as m:
-                mock_http_tracker = AsyncMock(HttpTrackerClient)
-                mock_http_tracker.url = 'test_url'
-                mock_http_tracker.make_request = AsyncMock(side_effect=asyncio.TimeoutError)
+    async def test_aenter_fail(self, tracker_manager):
+        failing_tracker = AsyncMock()
+        failing_tracker.make_request = AsyncMock(side_effect=ConnectionError)
+        failing_tracker_second = AsyncMock()
+        failing_tracker_second.make_request = AsyncMock(side_effect=asyncio.TimeoutError)
 
-                m.setattr('tracker_manager.HttpTrackerClient', mock_http_tracker)
-                tracker_manager.tracker_clients.append(mock_http_tracker)
+        tracker_manager.tracker_clients.append(failing_tracker)
+        tracker_manager.tracker_clients.append(failing_tracker_second)
 
-                async with tracker_manager:
-                    mock_http_tracker.make_request.assert_called_once_with(tracker_client.TrackerEvent.STARTED)
-                assert 'Timeout error for tracker' in caplog.text
-                assert len(tracker_manager.tracker_clients) == 0
+        with pytest.raises(BadTorrentTrackers) as excinfo:
+            async with tracker_manager:
+                pass
 
-    @pytest.mark.asyncio
-    async def test_tracker_manager_aenter_error_timeout(self, monkeypatch, tracker_manager, caplog):
-        with caplog.at_level(logging.ERROR):
-            with monkeypatch.context() as m:
-                mock_http_tracker = AsyncMock(HttpTrackerClient)
-                mock_http_tracker.url = 'test_url'
-                mock_http_tracker.make_request = AsyncMock(side_effect=ConnectionError)
-
-                m.setattr('tracker_manager.HttpTrackerClient', mock_http_tracker)
-                tracker_manager.tracker_clients.append(mock_http_tracker)
-
-                async with tracker_manager:
-                    mock_http_tracker.make_request.assert_called_once_with(tracker_client.TrackerEvent.STARTED)
-                assert 'Connection error for tracker' in caplog.text
-                assert len(tracker_manager.tracker_clients) == 0
+        assert str(excinfo.value) == "Torrent file had no stable trackers"
+        assert failing_tracker in excinfo.value.bad_trackers
+        assert len(tracker_manager.tracker_clients) == 0
 
     @pytest.mark.asyncio
     async def test_aexit(self, tracker_manager, caplog):
