@@ -2,7 +2,6 @@ import asyncio
 import logging
 import pickle
 import sys
-import aioconsole
 
 from parser import TorrentData
 from torrent_statistics import TorrentStatistics
@@ -10,7 +9,6 @@ from tracker_manager import TrackerManager
 from torrent_downloader import Downloader
 from file_writer import FileWriter
 from pathlib import Path
-from peer_connection import PeerConnection
 from priority_queue import PriorityQueue
 from requests_receiver import RequestsReceiver
 from pubsub import pub
@@ -76,7 +74,7 @@ class TorrentApplication:
 
     def close(self):
         for td in self.torrent_downloaders:
-            td.cancel()
+            td.close()
 
     @staticmethod
     async def queue_update_task(source_queues: list[asyncio.Queue], queue_target: PriorityQueue, priority=True):

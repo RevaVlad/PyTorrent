@@ -24,10 +24,11 @@ class TorrentInfo(tk.Frame):
         self.bar.pack(side='left')
 
         self.delete_button = tk.Button(self, text="X", background="red", activebackground="white",
-                                       command=self.cancel_download)
+                                       command=self.destroy)
         self.delete_button.pack(side='left')
 
     def cancel_download(self):
+        self.download_window.future.cancel()
         self.download_window.destroy()
 
     def destroy(self):
@@ -49,11 +50,17 @@ class Torrents(tk.Frame):
 
         download_window = tae.async_execute(self.client.download(torrent_data,
                                                                  Path(destination),
-                                                                 torrent_stat), pop_up=False, wait=False, visible=False, master=self)
+                                                                 torrent_stat),
+                                            pop_up=False, wait=False, visible=False,
+                                            master=self)
         torrent_info = TorrentInfo(self, download_window, torrent_data, torrent_stat)
         torrent_info.pack()
 
         self.torrents_frames.append(torrent_info)
+
+    def destroy(self):
+        self.client.close()
+        tk.Frame.destroy(self)
 
 
 class MainApplication(tk.Frame):
