@@ -61,7 +61,7 @@ class TorrentApplication:
 
         with FileWriter(torrent_data, destination=destination) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
-                                      self.request_receiver.port, use_local=True, use_http=False) as trackers_manager:
+                                      self.request_receiver.port, use_local=False, use_http=True) as trackers_manager:
                 trackers_manager.create_peers_update_task()
 
                 logging.info("Created all objects")
@@ -102,6 +102,5 @@ if __name__ == '__main__':
         await asyncio.gather(*tasks)
 
 
-    # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
