@@ -39,11 +39,8 @@ class HttpTrackerClient:
     async def make_request(self, event):
         current_time = time.monotonic()
         time_diff = current_time - self.last_request_time
-        if event != TrackerEvent.STARTED and time_diff < self.request_interval:
-            if event:
-                await asyncio.sleep(time_diff)
-            else:
-                return
+        if event and time_diff < self.request_interval:
+            await asyncio.sleep(time_diff)
         self.last_request_time = time.monotonic()
 
         params = {
@@ -59,19 +56,14 @@ class HttpTrackerClient:
 
         if event != TrackerEvent.CHECK:
             logging.info(f'Making request at "{self.url}" with params: {params}')
-        while True:
-            try:
-                async with aiohttp.ClientSession() as http_client:
-                    async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
-                        if not response.status == 200:
-                            raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
-                        data = await response.read()
-                        self._parse_response(bencode.decode(data))
-                        return
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                logging.info('Неудачная попытка входа')
+
+        async with aiohttp.ClientSession() as http_client:
+            async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
+                if not response.status == 200:
+                    raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
+                data = await response.read()
+                self._parse_response(bencode.decode(data))
                 return
-                await asyncio.sleep(10)
 
     def _parse_response(self, response):
         if 'failure reason' in response:
@@ -113,13 +105,10 @@ class LocalConnections:
         self.new_peers = asyncio.Queue()
 
     async def make_request(self, _):
-        '''
         ips = self.regular_exp.findall(os.popen('arp -a').read())
         for ip in ips:
             if ip.startswith('192'):
                 await self._add_peer(ip)
-        '''
-        await self._add_peer('192.168.45.8')
 
     async def _add_peer(self, peer_ip):
         if peer_ip in self._peers:

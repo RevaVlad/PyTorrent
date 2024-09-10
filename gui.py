@@ -11,26 +11,23 @@ from requests_receiver import RequestsReceiver
 
 
 class TorrentInfo(tk.Frame):
-    def __init__(self, parent, torrent_data: TorrentData, destination: Path, *args, **kwargs):
+    def __init__(self, parent, download_window, data, stat, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
 
-        self.stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
-        self.torrent = TorrentApplication(torrent_data, destination, self.stat)
+        self.stat = stat
+        self.download_window = download_window
 
-        self.name = tk.Label(self, text=f"{torrent_data.torrent_name}")
+        self.name = tk.Label(self, text=f"{data.torrent_name}")
         self.name.pack(side='left')
 
-        self.bar = ttk.Progressbar(self, maximum=torrent_data.total_length, variable=self.stat.downloadedVar)
+        self.bar = ttk.Progressbar(self, maximum=data.total_length, variable=self.stat.downloadedVar)
         self.bar.pack(side='left')
 
         self.delete_button = tk.Button(self, text="X", background="red", activebackground="white",
                                        command=self.cancel_download)
         self.delete_button.pack(side='left')
 
-        self.download_window = tae.async_execute(self.torrent.download())
-
     def cancel_download(self):
-        self.torrent.close()
         self.download_window.destroy()
 
     def destroy(self):
@@ -43,13 +40,17 @@ class Torrents(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
-
+        self.client = TorrentApplication()
         self.torrents_frames = []
-        self.request_receiver = RequestsReceiver(self.torrents_frames)
 
     def add_torrent(self, file_location, destination):
         torrent_data = TorrentData(file_location)
-        torrent_info = TorrentInfo(self, torrent_data, Path(destination))
+        torrent_stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
+
+        download_window = tae.async_execute(self.client.download(torrent_data,
+                                                                 Path(destination),
+                                                                 torrent_stat), pop_up=False, wait=False, visible=False, master=self)
+        torrent_info = TorrentInfo(self, download_window, torrent_data, torrent_stat)
         torrent_info.pack()
 
         self.torrents_frames.append(torrent_info)

@@ -35,7 +35,7 @@ class Downloader:
         # self.segments_strikes = [0] * torrent.total_segments
         self.bitfield_active = False
 
-    async def download_torrent(self):
+    async def download_torrent(self, seed=True):
         await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
         while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
@@ -54,6 +54,10 @@ class Downloader:
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
 
             await asyncio.sleep(.1)
+
+        if seed:
+            while True:
+                await asyncio.sleep(1000)
 
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
@@ -153,7 +157,6 @@ class Downloader:
         asyncio.create_task(self._send_bitfield_to_peer_task(peer))
 
     async def _send_bitfield_to_peer_task(self, peer:  PeerConnection):
-        logging.info(f"Sending bitfield: {self.torrent_statistics.bitfield}")
         message = Message.PeerSegmentsMessage(self.torrent_statistics.bitfield)
         await peer.send_message_to_peer(message)
 
@@ -166,7 +169,6 @@ class Downloader:
             asyncio.create_task(self._on_request_piece(request, peer))
 
     async def _on_request_piece(self, request, peer):
-        logging.info('request block')
         piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
         block = (await self.file_writer.read_segment(piece_index))[byte_offset: byte_offset + block_length]
         await peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block))

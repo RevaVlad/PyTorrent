@@ -24,7 +24,7 @@ class TorrentApplication:
         self.torrent_downloaders = []
 
         self.request_receiver = RequestsReceiver()
-        self.request_receiver.start_server()
+        self.server_started = False
         pub.subscribe(self.add_peer_by_info_hash, self.request_receiver.NEW_PEER_EVENT)
 
     def add_peer_by_info_hash(self, peer, info_hash):
@@ -53,6 +53,10 @@ class TorrentApplication:
             pickle.dump(self.torrents, f)
 
     async def download(self, torrent_data, destination, torrent_statistics):
+        if not self.server_started:
+            self.request_receiver.start_server()
+            self.server_started = True
+
         self.torrents.append((torrent_data, destination, torrent_statistics))  # delete torrent_stat?
         logging.info(
             f"Total length: {torrent_data.total_length}, Segment length: {torrent_data.segment_length}, Total segments {torrent_data.total_segments}")
@@ -70,9 +74,6 @@ class TorrentApplication:
                 self.torrent_downloaders.append(torrent_downloader)
                 await torrent_downloader.download_torrent()
 
-            while True:
-                await asyncio.sleep(100)
-
     def close(self):
         for td in self.torrent_downloaders:
             td.cancel()
@@ -88,11 +89,20 @@ class TorrentApplication:
 
 
 if __name__ == '__main__':
-    async def zagl(data):
+    async def main():
+        files = ["torrent_files/test.torrent"]
+                 # "torrent_files/nobody.torrent"]
+        tds = [TorrentData(file) for file in files]
+
         client = TorrentApplication()
-        await client.download(data, Path('./downloaded'), TorrentStatistics(data.total_length, data.total_segments))
+        coroutines = [client.download(td,
+                                      Path('./downloaded'),
+                                      TorrentStatistics(td.total_length, td.total_segments)) for td in tds]
+
+        tasks = [asyncio.create_task(coro) for coro in coroutines]
+        await asyncio.gather(*tasks)
+
 
     # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
-    data = TorrentData("torrent_files/test.torrent")
-    asyncio.run(zagl(data))
+    asyncio.run(main())
