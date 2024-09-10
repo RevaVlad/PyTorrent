@@ -50,10 +50,10 @@ class TrackerManager:
         for tracker in self.tracker_clients:
             try:
                 await tracker.make_request(TrackerEvent.STARTED)
-            except (ConnectionError, NotImplementedError) as e:
-                logging.error(str(e))
+            except (ConnectionError, NotImplementedError):
+                logging.error(f'Connection error for tracker {tracker.url}')
                 bad_trackers.append(tracker)
-            except asyncio.TimeoutError as e:
+            except asyncio.TimeoutError:
                 logging.error(f"Timeout error for tracker: {tracker.url}")
                 bad_trackers.append(tracker)
 
