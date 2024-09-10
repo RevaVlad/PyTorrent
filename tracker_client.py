@@ -98,17 +98,21 @@ class HttpTrackerClient:
 
 class LocalConnections:
 
-    regular_exp = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
+    regular_exp = re.compile(r'IPv4.*[0-9]+(?:\.[0-9]+){3}')
+    ip_exp = re.compile(r'[0-9]+(?:\.[0-9]+){2}')
 
     def __init__(self):
         self._peers = set()
         self.new_peers = asyncio.Queue()
 
+        self.ip_start = self.ip_exp.findall(self.regular_exp.search(os.popen('ipconfig').read()).group())[0]
+
     async def make_request(self, _):
-        ips = self.regular_exp.findall(os.popen('arp -a').read())
-        for ip in ips:
-            if ip.startswith('192'):
-                await self._add_peer(ip)
+        """
+        for i in range(200):
+            await self._add_peer(self.ip_start + '.' + str(i))
+        """
+        await self._add_peer('10.249.29.99')
 
     async def _add_peer(self, peer_ip):
         if peer_ip in self._peers:

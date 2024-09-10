@@ -143,4 +143,9 @@ class SegmentDownloader:
         return list(self.peers_strikes)
 
     def close(self):
+        for peer in self.tasks:
+            for block in self.tasks[peer].copy():
+                if block.status == Block.Pending:
+                    block.close()
+
         self.downloading_task.cancel()

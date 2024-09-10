@@ -18,7 +18,7 @@ class BadTorrentTrackers(Exception):
 class TrackerManager:
     MAX_PEERS = 0
 
-    def __init__(self, torrent_data, torrent_statistics, port, use_local=False):
+    def __init__(self, torrent_data, torrent_statistics, port, use_local=False, use_http=True):
         self.torrent_data = torrent_data
         self.segment_info = torrent_statistics
         self.port = port
@@ -35,8 +35,9 @@ class TrackerManager:
         if use_local:
             self._add_tracker('local')
 
-        for url in torrent_data.trackers:
-            self._add_tracker(url)
+        if use_http:
+            for url in torrent_data.trackers:
+                self._add_tracker(url)
 
     def _create_peer_id(self):
         return '-PC0001-' + hashlib.sha1(self.info_hash).digest().hex()[:12]

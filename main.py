@@ -61,7 +61,7 @@ class TorrentApplication:
 
         with FileWriter(torrent_data, destination=destination) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
-                                      self.request_receiver.port, use_local=False) as trackers_manager:
+                                      self.request_receiver.port, use_local=True, use_http=False) as trackers_manager:
                 trackers_manager.create_peers_update_task()
 
                 logging.info("Created all objects")
@@ -73,6 +73,7 @@ class TorrentApplication:
                 await torrent_downloader.download_torrent()
 
     def close(self):
+        self.request_receiver.close()
         for td in self.torrent_downloaders:
             td.close()
 
