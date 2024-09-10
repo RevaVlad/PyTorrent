@@ -1,16 +1,24 @@
 import asyncio
 import hashlib
 import logging
+import bencode
 from asyncio import Queue
-from tracker_client import TrackerClient, TrackerEvent
+from tracker_client import HttpTrackerClient, TrackerEvent, LocalConnections
 from peer_connection import PeerConnection
 from contextlib import suppress
+
+
+class BadTorrentTrackers(Exception):
+    def __init__(self, message, bad_trackers):
+        # Call the base class constructor with the parameters it needs
+        super().__init__(message)
+        self.bad_trackers = bad_trackers
 
 
 class TrackerManager:
     MAX_PEERS = 0
 
-    def __init__(self, torrent_data, torrent_statistics, port):
+    def __init__(self, torrent_data, torrent_statistics, port, use_local=False):
         self.torrent_data = torrent_data
         self.segment_info = torrent_statistics
         self.port = port
@@ -20,27 +28,37 @@ class TrackerManager:
         self.info_hash = torrent_data.info_hash
         self.peer_id = self._create_peer_id()
         self.available_peers = Queue(self.MAX_PEERS)
+        self._peers = set()
 
         self.update_task = None
 
+        if use_local:
+            self._add_tracker('local')
+
         for url in torrent_data.trackers:
-            if not url.startswith('http'):
-                continue
             self._add_tracker(url)
 
     def _create_peer_id(self):
         return '-PC0001-' + hashlib.sha1(self.info_hash).digest().hex()[:12]
 
     def _add_tracker(self, url):
-        self.tracker_clients.append(TrackerClient(url, self.info_hash, self.peer_id, self.port, self.segment_info))
+        if url.startswith('http'):
+            self.tracker_clients.append(HttpTrackerClient(url,
+                                                          self.info_hash,
+                                                          self.peer_id,
+                                                          self.port,
+                                                          self.segment_info))
+        if url == 'local':
+            self.tracker_clients.append(LocalConnections())
 
     async def __aenter__(self):
+        logging.info("Starting trackers")
+
         bad_trackers = []
         for tracker in self.tracker_clients:
             try:
                 await tracker.make_request(TrackerEvent.STARTED)
-            except (ConnectionError, NotImplementedError) as e:
-                logging.error(str(e))
+            except (ConnectionError, TimeoutError, bencode.BencodeDecodeError) as e:
                 bad_trackers.append(tracker)
             except asyncio.TimeoutError as e:
                 logging.error(f"Timeout error for tracker: {tracker.url}")
@@ -48,6 +66,9 @@ class TrackerManager:
 
         for bad_tracker in bad_trackers:
             self.tracker_clients.remove(bad_tracker)
+
+        if not self.tracker_clients:
+            raise BadTorrentTrackers("Torrent file had no stable trackers", bad_trackers)
 
         return self
 
@@ -73,6 +94,9 @@ class TrackerManager:
                 for tracker in self.tracker_clients:
                     while not tracker.new_peers.empty():
                         peer = tracker.new_peers.get_nowait()
+                        if peer in self._peers:
+                            continue
+                        self._peers.add(peer)
                         peer = PeerConnection(peer[0], self.torrent_data.total_segments, self.info_hash, peer[1])
                         self.available_peers.put_nowait(peer)
 

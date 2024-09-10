@@ -11,7 +11,7 @@ from priority_queue import PriorityQueue
 from requests_receiver import PeerReceiver
 
 
-class TorrentDownloader:
+class Downloader:
     MAX_PEER_COUNT = 50
     MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
@@ -35,13 +35,13 @@ class TorrentDownloader:
         # self.segments_strikes = [0] * torrent.total_segments
         self.bitfield_active = False
 
-    async def download_torrent(self):
+    async def download_torrent(self, seed=True):
         await self.get_downloaded_segments()
         self._peer_connection_task = asyncio.create_task(self.peer_connection_task())
         while any(x[2] is False for x in self.available_segments) or self._segment_downloaders:
             await asyncio.sleep(.1)
 
-            if len(self._segment_downloaders) < TorrentDownloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
+            if len(self._segment_downloaders) < Downloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id, finding_result = await self.try_find_rarest_segment()
                 if not finding_result:
                     continue
@@ -54,6 +54,10 @@ class TorrentDownloader:
                 self._segment_downloaders.append(self.start_segment_download(segment_id, peers))
 
             await asyncio.sleep(.1)
+
+        if seed:
+            while True:
+                await asyncio.sleep(1000)
 
     async def get_downloaded_segments(self):
         for i in range(self.torrent.total_segments):
@@ -111,7 +115,7 @@ class TorrentDownloader:
         for peer in downloader.peers_strikes:
             self.get_bitfield_from_peer(peer)
 
-    #def send_have_message_to_peers(self, index):
+    def send_have_message_to_peers(self, index):
         asyncio.create_task(self._send_have_message_to_peers_task(index))
 
     async def _send_have_message_to_peers_task(self, index):
@@ -122,14 +126,17 @@ class TorrentDownloader:
     async def peer_connection_task(self):
         logging.info("Started peer connection task")
         while True:
-            if len(self.active_peers) < TorrentDownloader.MAX_PEER_COUNT:
+            if len(self.active_peers) < Downloader.MAX_PEER_COUNT:
                 result = True
                 while result:
-                    result = await self._add_peer()
+                    result = await self._add_peer_from_queue()
             await asyncio.sleep(.01)
 
-    async def _add_peer(self):
+    async def _add_peer_from_queue(self):
         peer = await self.peer_queue.get()
+        await self.add_peer(peer)
+
+    async def add_peer(self, peer):
         connect = await peer.connect()
         if connect:
             if await peer.handle_handshake():
@@ -143,7 +150,6 @@ class TorrentDownloader:
                 if not isinstance(peer, PeerReceiver):
                     self.check_for_unchoked(peer)
                 return True
-
         logging.error('Возникли проблемы с установлением соединения с пиром')
         return False
 
@@ -163,7 +169,6 @@ class TorrentDownloader:
             asyncio.create_task(self._on_request_piece(request, peer))
 
     async def _on_request_piece(self, request, peer):
-        logging.info('request block')
         piece_index, byte_offset, block_length = request.index, request.byte_offset, request.block_len
         block = (await self.file_writer.read_segment(piece_index))[byte_offset: byte_offset + block_length]
         await peer.send_message_to_peer(Message.SendPieceMessage(piece_index, byte_offset, block))

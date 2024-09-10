@@ -1,40 +1,38 @@
-import asyncio
 import logging
 import tkinter as tk
 import tk_async_execute as tae
 from pathlib import Path
 from tkinter import filedialog, ttk
 
-from main import download_from_torrent_file
+from main import TorrentApplication
 from parser import TorrentData
 from torrent_statistics import TorrentStatWithVariables
+from requests_receiver import RequestsReceiver
 
 
 class TorrentInfo(tk.Frame):
-    def __init__(self, parent, torrent_data: TorrentData, destination: Path, *args, **kwargs):
+    def __init__(self, parent, download_window, data, stat, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
 
-        self.stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
-        self.torrent_data = torrent_data
-        self.destination = destination
+        self.stat = stat
+        self.download_window = download_window
 
-        self.name = tk.Label(self, text=f"{torrent_data.torrent_name}")
+        self.name = tk.Label(self, text=f"{data.torrent_name}")
         self.name.pack(side='left')
 
-        self.bar = ttk.Progressbar(self, maximum=torrent_data.total_length, variable=self.stat.downloadedVar)
+        self.bar = ttk.Progressbar(self, maximum=data.total_length, variable=self.stat.downloadedVar)
         self.bar.pack(side='left')
 
         self.delete_button = tk.Button(self, text="X", background="red", activebackground="white",
                                        command=self.cancel_download)
         self.delete_button.pack(side='left')
 
-        self.start_download()
-
-    def start_download(self):
-        tae.async_execute(download_from_torrent_file(self.torrent_data, self.destination, self.stat), wait=False, visible=False, pop_up=False)
-
     def cancel_download(self):
-        pass
+        self.download_window.destroy()
+
+    def destroy(self):
+        self.cancel_download()
+        tk.Frame.destroy(self)
 
 
 class Torrents(tk.Frame):
@@ -42,12 +40,20 @@ class Torrents(tk.Frame):
     def __init__(self, parent, *args, **kwargs):
         tk.Frame.__init__(self, parent, *args, **kwargs)
         self.parent = parent
-        self.torrents = []
+        self.client = TorrentApplication()
+        self.torrents_frames = []
 
     def add_torrent(self, file_location, destination):
-        torrent_info = TorrentInfo(self, TorrentData(file_location), Path(destination))
+        torrent_data = TorrentData(file_location)
+        torrent_stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
+
+        download_window = tae.async_execute(self.client.download(torrent_data,
+                                                                 Path(destination),
+                                                                 torrent_stat), pop_up=False, wait=False, visible=False, master=self)
+        torrent_info = TorrentInfo(self, download_window, torrent_data, torrent_stat)
         torrent_info.pack()
-        self.torrents.append(torrent_info)
+
+        self.torrents_frames.append(torrent_info)
 
 
 class MainApplication(tk.Frame):

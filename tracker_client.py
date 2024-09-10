@@ -1,8 +1,10 @@
 import asyncio
+import re
 import socket
 import struct
 import time
 import logging
+import os
 from asyncio import Queue
 from enum import Enum
 from urllib.parse import urlencode
@@ -18,7 +20,7 @@ class TrackerEvent(Enum):
     CHECK = ''
 
 
-class TrackerClient:
+class HttpTrackerClient:
 
     def __init__(self, url, info_hash, peer_id, port, segment_info):
         self._peers = set()
@@ -37,11 +39,8 @@ class TrackerClient:
     async def make_request(self, event):
         current_time = time.monotonic()
         time_diff = current_time - self.last_request_time
-        if event != TrackerEvent.STARTED and time_diff < self.request_interval:
-            if event:
-                await asyncio.sleep(time_diff)
-            else:
-                return
+        if event and time_diff < self.request_interval:
+            await asyncio.sleep(time_diff)
         self.last_request_time = time.monotonic()
 
         params = {
@@ -57,19 +56,14 @@ class TrackerClient:
 
         if event != TrackerEvent.CHECK:
             logging.info(f'Making request at "{self.url}" with params: {params}')
-        while True:
-            try:
-                async with aiohttp.ClientSession() as http_client:
-                    async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
-                        if not response.status == 200:
-                            raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
-                        data = await response.read()
-                        self._parse_response(bencode.decode(data))
-                        return
-            except (aiohttp.ClientError, asyncio.TimeoutError):
-                logging.info('Неудачная попытка входа')
+
+        async with aiohttp.ClientSession() as http_client:
+            async with http_client.get(self.url + '?' + urlencode(params), timeout=10) as response:
+                if not response.status == 200:
+                    raise ConnectionError(f'Unable to connect to "{self.url}": status code {response.status}')
+                data = await response.read()
+                self._parse_response(bencode.decode(data))
                 return
-                await asyncio.sleep(10)
 
     def _parse_response(self, response):
         if 'failure reason' in response:
@@ -101,3 +95,25 @@ class TrackerClient:
         except asyncio.TimeoutError:
             pass
 
+
+class LocalConnections:
+
+    regular_exp = re.compile(r'[0-9]+(?:\.[0-9]+){3}')
+
+    def __init__(self):
+        self._peers = set()
+        self.new_peers = asyncio.Queue()
+
+    async def make_request(self, _):
+        ips = self.regular_exp.findall(os.popen('arp -a').read())
+        for ip in ips:
+            if ip.startswith('192'):
+                await self._add_peer(ip)
+
+    async def _add_peer(self, peer_ip):
+        if peer_ip in self._peers:
+            return
+        await self.new_peers.put((peer_ip, 52656))
+
+    async def close(self):
+        pass
