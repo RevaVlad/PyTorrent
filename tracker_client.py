@@ -9,9 +9,6 @@ from asyncio import Queue
 from enum import Enum
 from urllib.parse import urlencode
 
-import aiohttp
-import bencode
-
 
 class TrackerEvent(Enum):
     STARTED = 'started'
@@ -88,6 +85,20 @@ class HttpTrackerClient:
         ip = socket.inet_ntoa(row_data[:4])
         port = struct.unpack(">H", row_data[4:6])[0]
         return ip, port
+
+    async def send_message(self, conn, sock, tracker_message):
+        message = tracker_message.encode()
+        try:
+            sock.sendto(message, conn)
+            response = await self._read_from_socket_udp(sock)
+        except asyncio.TimeoutError as e:
+            logging.error(f"Timeout when sending message {message.hex()}: {e}")
+            return
+        except socket.error as e:
+            logging.error(f"Socket error when sending message: {e}")
+            return
+
+        return response
 
     async def close(self):
         try:

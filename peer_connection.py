@@ -1,8 +1,5 @@
 import struct
-import time
-
 import bitstring
-import socket
 import logging
 import Message
 import asyncio
@@ -75,9 +72,8 @@ class PeerConnection:
             return False
         return True
 
+
     async def send_message_to_peer(self, message: Message.Message) -> bool:
-        if isinstance(message, Message.SendPieceMessage):
-            logging.info("Sending block")
         if not self.handshake:
             allowed_messages = (
                 Message.HandshakeMessage, Message.PeerSegmentsMessage, Message.InterestedMessage)
@@ -216,9 +212,9 @@ class PeerConnection:
     async def handle_message(self, new_message):
         match new_message:
             case Message.HandshakeMessage():
-                logging.error(f'Обработка Handshake сообщения производится отедльно')
+                logging.error(f'Обработка Handshake сообщения производится отдельно')
             case Message.ContinueConnectionMessage():
-                logging.error(f'Обработка ContinueConnection сообщения производится отедльно')
+                logging.error(f'Обработка ContinueConnection сообщения производится отдельно')
             case Message.ChokedMessage():
                 self.peer_choked = True
             case Message.UnChokedMessage():

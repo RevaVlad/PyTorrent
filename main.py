@@ -100,7 +100,6 @@ if __name__ == '__main__':
         tasks = [asyncio.create_task(coro) for coro in coroutines]
         await asyncio.gather(*tasks)
 
-
     # logging.basicConfig(level=logging.FATAL)
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())

@@ -29,8 +29,3 @@ class TorrentData:
 
     def _get_files_list(self, info):
         return info['files'] if 'files' in info else [{'length': info['length'], 'path': [info['name']]}]
-
-
-if __name__ == '__main__':
-    data = TorrentData('nobody.torrent')
-    print(data.trackers, data.files, data.torrent_name, sep='\n')
