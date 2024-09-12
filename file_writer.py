@@ -176,8 +176,8 @@ class FakeTorrentManyFiles:
     torrent_name = '10k_files'
 
 
+'''
 if __name__ == '__main__':
-    '''
     async def basic():
         fake_torrent = FakeTorrent()
 
@@ -196,7 +196,7 @@ if __name__ == '__main__':
                 print(f"{file} - {data}, length - {len(data)}")
 
         shutil.rmtree('./downloaded/' + fake_torrent.torrent_name)
-    '''
+    
 
     async def many_files():
         torrent = FakeTorrentManyFiles()
@@ -214,3 +214,4 @@ if __name__ == '__main__':
         shutil.rmtree('./downloaded/' + torrent.torrent_name)
 
     print(timeit.timeit(lambda: asyncio.run(many_files()), number=1))
+    '''
