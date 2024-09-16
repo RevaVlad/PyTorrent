@@ -93,7 +93,7 @@ class HttpTrackerClient:
         try:
             await self.make_request(TrackerEvent.STOPPED)
         except asyncio.TimeoutError:
-            pass
+            logging.error('Timeout error while close connection with tracker')
 
 
 class LocalConnections:
