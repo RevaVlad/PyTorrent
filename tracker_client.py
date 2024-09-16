@@ -108,11 +108,8 @@ class LocalConnections:
         self.ip_start = self.ip_exp.findall(self.regular_exp.search(os.popen('ipconfig').read()).group())[0]
 
     async def make_request(self, _):
-        """
         for i in range(200):
             await self._add_peer(self.ip_start + '.' + str(i))
-        """
-        await self._add_peer('10.249.29.99')
 
     async def _add_peer(self, peer_ip):
         if peer_ip in self._peers:

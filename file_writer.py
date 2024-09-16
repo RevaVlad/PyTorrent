@@ -1,11 +1,9 @@
 import logging
 import hashlib
-import shutil
-import random
+import configuration
 from pathlib import Path
 import asyncio
 from collections import deque
-import timeit
 
 
 class AsyncFile:
@@ -62,8 +60,6 @@ class AsyncFile:
 
 
 class FileWriter:
-    WRITE_BUFFER_LENGTH = 2 ** 13
-    FILES_BUFFER_LENGTH = 10
 
     def __init__(self, torrent, destination: Path):
         self.destination = destination
@@ -72,7 +68,7 @@ class FileWriter:
         self.segment_length = torrent.segment_length
         self.file_pref_lengths = [0]
         self.files = []
-        self.files_buffer = deque(maxlen=FileWriter.FILES_BUFFER_LENGTH)
+        self.files_buffer = deque(maxlen=configuration.FILES_BUFFER_LENGTH)
 
     def __enter__(self):
         common_path = self.destination / self.torrent.torrent_name if len(self.torrent.files) != 1 else self.destination
@@ -105,8 +101,8 @@ class FileWriter:
         with file_path.open('rb+') as file:
             remaining_length = file_length
             while remaining_length > 0:
-                file.write(b'\x00' * min(remaining_length, self.WRITE_BUFFER_LENGTH))
-                remaining_length -= self.WRITE_BUFFER_LENGTH
+                file.write(b'\x00' * min(remaining_length, configuration.WRITE_BUFFER_LENGTH))
+                remaining_length -= configuration.WRITE_BUFFER_LENGTH
 
         return AsyncFile(file_path)
 
@@ -155,62 +151,8 @@ class FileWriter:
         if new_file in self.files_buffer:
             return
         new_file.open()
-        if len(self.files_buffer) >= FileWriter.FILES_BUFFER_LENGTH:
+        if len(self.files_buffer) >= configuration.FILES_BUFFER_LENGTH:
             old_file = self.files_buffer.pop()
             if old_file not in self.files_buffer:
                 old_file.close()
         self.files_buffer.append(new_file)
-
-
-class FakeTorrent:
-    files = [{'path': ['one.txt'], 'length': 2},
-             {'path': ['folder/two.txt'], 'length': 1},
-             {'path': ['folder/three.txt'], 'length': 6}]
-    segment_length = 3
-    torrent_name = 'basic'
-
-
-class FakeTorrentManyFiles:
-    files = [{'path': [f'{i:04d}.txt'], 'length': 2} for i in range(10_000)]
-    segment_length = 5
-    torrent_name = '10k_files'
-
-
-if __name__ == '__main__':
-    '''
-    async def basic():
-        fake_torrent = FakeTorrent()
-
-        with FileWriter(fake_torrent, Path('./downloaded')) as file_writer:
-            await asyncio.gather(file_writer.write_segment(0, b'111'),
-                                 file_writer.write_segment(1, b'222'),
-                                 file_writer.write_segment(2, b'333'))
-
-            results = await asyncio.gather(file_writer.read_segment(0),
-                                           file_writer.read_segment(1),
-                                           file_writer.read_segment(2))
-
-        for dir_path, dir_names, filenames in os.walk('./downloaded/' + fake_torrent.torrent_name):
-            for file in filenames:
-                data = open(dir_path + '/' + file, 'rb').read()
-                print(f"{file} - {data}, length - {len(data)}")
-
-        shutil.rmtree('./downloaded/' + fake_torrent.torrent_name)
-    '''
-
-    async def many_files():
-        torrent = FakeTorrentManyFiles()
-
-        with FileWriter(torrent, Path('./downloaded')) as fw:
-            requests = [fw.write_segment(segment_id, bytes(str(segment_id)[0] * torrent.segment_length, encoding='utf-8'))
-                        for segment_id in range(4000)]
-            random.shuffle(requests)
-            await asyncio.gather(*requests)
-        with FileWriter(torrent, Path('./downloaded')) as fw:
-            for segment_id in range(4000):
-                data = await fw.read_segment(segment_id)
-                assert data == bytes(str(segment_id)[0] * torrent.segment_length, encoding='utf-8')
-
-        shutil.rmtree('./downloaded/' + torrent.torrent_name)
-
-    print(timeit.timeit(lambda: asyncio.run(many_files()), number=1))

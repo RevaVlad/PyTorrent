@@ -1,8 +1,6 @@
 import asyncio
 import logging
-
-import bitstring
-
+import configuration
 import Message
 from segment_downloader import SegmentDownloader, SegmentDownloadStatus, Segment
 from peer_connection import PeerConnection
@@ -12,9 +10,6 @@ from requests_receiver import PeerReceiver
 
 
 class Downloader:
-    MAX_PEER_COUNT = 50
-    MAX_PEER_PEERS_PER_SEGMENT = 1
-    MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY = 5
 
     def __init__(self, torrent, file_writer, torrent_statistics, peer_queue: asyncio.Queue):
         self.torrent = torrent
@@ -42,13 +37,13 @@ class Downloader:
         while any(segment.status != SegmentDownloadStatus.SUCCESS for segment in self.available_segments):
             await asyncio.sleep(.1)
 
-            if len(self._segment_downloaders) < Downloader.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
+            if len(self._segment_downloaders) < configuration.MAX_SEGMENTS_DOWNLOADING_SIMULTANEOUSLY:
                 segment_id, finding_result = await self.try_find_rarest_segment()
                 if not finding_result:
                     continue
 
                 peers_with_segment = self.available_segments[segment_id].peers
-                peers = peers_with_segment[:self.MAX_PEER_PEERS_PER_SEGMENT]
+                peers = peers_with_segment[:configuration.MAX_PEER_PEERS_PER_SEGMENT]
 
                 for peer in peers:
                     await self.remove_peer_from_available_segments(peer)
@@ -129,7 +124,7 @@ class Downloader:
     async def peer_connection_task(self):
         logging.info("Started peer connection task")
         while True:
-            if len(self.active_peers) < Downloader.MAX_PEER_COUNT:
+            if len(self.active_peers) < configuration.MAX_PEER_COUNT:
                 result = True
                 while result:
                     result = await self._add_peer_from_queue()
@@ -221,15 +216,15 @@ class Downloader:
                 self._segment_heap.push(segment.peers_count, segment.id)
 
     def replace_peer(self, segment_downloader: SegmentDownloader):
-        other_peers = self.available_segments[segment_downloader.segment_id].peers
+        other_peers = self.available_segments[segment_downloader.segment.id].peers
         if any(other_peers):
-            logging.info(f"Replacing peer for downloader of segment {segment_downloader.segment_id}")
+            logging.info(f"Replacing peer for downloader of segment {segment_downloader.segment.id}")
             peer = other_peers.pop(0)
             asyncio.create_task(self.remove_peer_from_available_segments(peer))
             segment_downloader.add_peer(peer)
         else:
             logging.info(
-                f"No new peers were provided for segment {segment_downloader.segment_id}, gonna try again later")
+                f"No new peers were provided for segment {segment_downloader.segment.id}, gonna try again later")
             if segment_downloader in self._segment_downloaders:
                 self._segment_downloaders.remove(segment_downloader)
 

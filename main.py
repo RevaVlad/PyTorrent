@@ -2,6 +2,7 @@ import asyncio
 import logging
 import pickle
 import sys
+import configuration
 
 from parser import TorrentData
 from torrent_statistics import TorrentStatistics
@@ -15,7 +16,6 @@ from pubsub import pub
 
 
 class TorrentApplication:
-    PICKLE_FILENAME = 'current_torrents.pickle'
 
     def __init__(self):
         self.torrents = []
@@ -35,7 +35,7 @@ class TorrentApplication:
                 await td.add_peer(peer)
 
     def get_previous_torrents(self):
-        file = Path(sys.path[0]) / self.PICKLE_FILENAME
+        file = Path(sys.path[0]) / configuration.PICKLE_FILENAME
         if file.exists():
             with open(file, 'rb') as f:
                 torrents = pickle.load(f)
@@ -44,7 +44,7 @@ class TorrentApplication:
 
     def save_current_torrents(self):
         project_directory = Path(sys.path[0])
-        location = project_directory / self.PICKLE_FILENAME
+        location = project_directory / configuration.PICKLE_FILENAME
         if not location.exists():
             location.open('w').close()
         with open(location, 'wb') as f:
@@ -55,13 +55,15 @@ class TorrentApplication:
             self.request_receiver.start_server()
             self.server_started = True
 
-        self.torrents.append((torrent_data, destination, torrent_statistics))  # delete torrent_stat?
+        self.torrents.append((torrent_data, destination, torrent_statistics))
         logging.info(
             f"Total length: {torrent_data.total_length}, Segment length: {torrent_data.segment_length}, Total segments {torrent_data.total_segments}")
 
         with FileWriter(torrent_data, destination=destination) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
-                                      self.request_receiver.port, use_local=False, use_http=True) as trackers_manager:
+                                      self.request_receiver.port,
+                                      use_local=configuration.USE_LOCAL_PEERS,
+                                      use_http=configuration.USE_HTTP_PEERS) as trackers_manager:
                 trackers_manager.create_peers_update_task()
 
                 logging.info("Created all objects")
@@ -90,7 +92,6 @@ class TorrentApplication:
 if __name__ == '__main__':
     async def main():
         files = ["torrent_files/test.torrent"]
-                 # "torrent_files/nobody.torrent"]
         tds = [TorrentData(file) for file in files]
 
         client = TorrentApplication()
@@ -102,5 +103,5 @@ if __name__ == '__main__':
         await asyncio.gather(*tasks)
 
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=configuration.LOGGING_LEVEL)
     asyncio.run(main())

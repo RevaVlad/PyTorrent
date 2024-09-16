@@ -4,6 +4,7 @@ import Message
 import parser
 import math
 import hashlib
+import configuration
 
 from enum import Enum
 from pubsub import pub
@@ -45,8 +46,6 @@ class Segment:
 
 
 class SegmentDownloader:
-    MAX_STRIKES_PER_PEER = 5
-    MAX_PENDING_BLOCKS = 5
 
     PEER_DELETION_EVENT = 'peerDeleted'  # + segment.id, args: segment_downloader
     DOWNLOADING_STOPPED_EVENT = 'downloadingStopped'  # + segment.id, args: segment_downloader
@@ -90,7 +89,7 @@ class SegmentDownloader:
             await self.check_peers_connection()
 
             while (any(self.tasks) and any(self.missing_blocks)
-                   and sum(len(self.tasks[peer]) for peer in self.tasks) < SegmentDownloader.MAX_PENDING_BLOCKS):
+                   and sum(len(self.tasks[peer]) for peer in self.tasks) < configuration.MAX_PENDING_BLOCKS):
                 lazy_peer = min(list(self.tasks), key=lambda peer: len(self.tasks[peer]))
                 block = self.missing_blocks.pop()
                 await self.request_block(block, lazy_peer)
@@ -123,7 +122,7 @@ class SegmentDownloader:
 
     async def check_peers_connection(self):
         for peer in list(self.peers_strikes):
-            if not peer.is_active or self.peers_strikes[peer] > SegmentDownloader.MAX_STRIKES_PER_PEER:
+            if not peer.is_active or self.peers_strikes[peer] > configuration.MAX_STRIKES_PER_PEER:
                 logging.info(f"Peer was too slow, it got soft ban {peer.ip}")
                 del self.peers_strikes[peer]
                 del self.tasks[peer]
