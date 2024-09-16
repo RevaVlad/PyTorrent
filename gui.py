@@ -1,13 +1,14 @@
 import logging
+import configuration
 import tkinter as tk
 import tk_async_execute as tae
+
 from pathlib import Path
 from tkinter import filedialog, ttk
 
 from main import TorrentApplication
 from parser import TorrentData
 from torrent_statistics import TorrentStatWithVariables
-from requests_receiver import RequestsReceiver
 
 
 class TorrentInfo(tk.Frame):
@@ -106,7 +107,7 @@ class MainApplication(tk.Frame):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=configuration.LOGGING_LEVEL)
 
     root = tk.Tk()
     MainApplication(root).pack(side="top", fill="both", expand=True)

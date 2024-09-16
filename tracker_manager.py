@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import configuration
 import bencode
 from asyncio import Queue
 from tracker_client import HttpTrackerClient, TrackerEvent, LocalConnections
@@ -10,14 +11,11 @@ from contextlib import suppress
 
 class BadTorrentTrackers(Exception):
     def __init__(self, message, bad_trackers):
-        # Call the base class constructor with the parameters it needs
         super().__init__(message)
         self.bad_trackers = bad_trackers
 
 
 class TrackerManager:
-    MAX_PEERS = 0
-
     def __init__(self, torrent_data, torrent_statistics, port, use_local=False, use_http=True):
         self.torrent_data = torrent_data
         self.segment_info = torrent_statistics
@@ -27,7 +25,7 @@ class TrackerManager:
         self.tracker_clients = []
         self.info_hash = torrent_data.info_hash
         self.peer_id = self._create_peer_id()
-        self.available_peers = Queue(self.MAX_PEERS)
+        self.available_peers = Queue(configuration.MAX_PEERS_PENDING)
         self._peers = set()
 
         self.update_task = None

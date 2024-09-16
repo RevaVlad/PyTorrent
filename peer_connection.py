@@ -84,6 +84,7 @@ class PeerConnection:
             if all(not isinstance(message, message_type) for message_type in allowed_messages):
                 return False
 
+        # logging.info(message)
         message = message.encode()
         try:
             self.writer.write(message)
