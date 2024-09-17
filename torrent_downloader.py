@@ -28,7 +28,6 @@ class Downloader:
         self._segment_heap = PriorityQueue()
         self._segment_downloaders = []
 
-        # self.segments_strikes = [0] * torrent.total_segments
         self.bitfield_active = False
 
     async def download_torrent(self, seed=True):
