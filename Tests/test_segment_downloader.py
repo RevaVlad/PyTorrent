@@ -2,7 +2,7 @@ import logging
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock
-from segment_downloader import SegmentDownloader, DownloadResult
+from segment_downloader import SegmentDownloader, Segment
 from block import Block
 from peer_connection import PeerConnection
 from pubsub import pub
@@ -49,7 +49,7 @@ def peers():
 
 @pytest.fixture
 def segment_downloader(torrent_data, file_writer, torrent_statistics, peers):
-    return SegmentDownloader(segment_id=0, torrent_data=torrent_data, file_writer=file_writer,
+    return SegmentDownloader(Segment(0), torrent_data=torrent_data, file_writer=file_writer,
                              torrent_statistics=torrent_statistics, peers=peers)
 
 
@@ -67,7 +67,6 @@ class TestSegmentDownloader:
         await segment_downloader._download_segment()
 
         file_writer.write_segment.assert_not_awaited()
-        assert segment_downloader.download_result == DownloadResult.FAILED
 
     @pytest.mark.asyncio
     async def test_check_tasks_completion(self, segment_downloader, peers):

@@ -1,6 +1,7 @@
 from collections import deque
 
 import pytest
+import configuration
 import logging
 import hashlib
 from pathlib import Path
@@ -201,7 +202,6 @@ class TestFileWriter:
             m.setattr(Path, 'mkdir', MagicMock())
             m.setattr(file_path, 'stat', MagicMock())
             m.setattr(file_path, 'open', MagicMock())
-            m.setattr(file_writer, 'WRITE_BUFFER_LENGTH', 512)
 
             result = file_writer._prepare_file(file_path, file_length)
             assert result is not None
