@@ -1,8 +1,6 @@
 import struct
-import time
 
 import bitstring
-import socket
 import logging
 import Message
 import asyncio
@@ -84,7 +82,6 @@ class PeerConnection:
             if all(not isinstance(message, message_type) for message_type in allowed_messages):
                 return False
 
-        # logging.info(message)
         message = message.encode()
         try:
             self.writer.write(message)
@@ -92,10 +89,8 @@ class PeerConnection:
             return True
         except OSError as e:
             self.is_active = False
-            #logging.error(f'Socket error {e.errno} {e.strerror}. Невозможно отправить сообщение {message}')
             return False
 
-    # region Properties
     @property
     def interested(self) -> bool:
         return self._interested
@@ -129,8 +124,6 @@ class PeerConnection:
     @peer_choked.setter
     def peer_choked(self, value: bool) -> None:
         self._peer_choked = value
-
-    # endregion
 
     def check_for_piece(self, index: int) -> bool:
         return self.bitfield[index]
@@ -247,7 +240,6 @@ class PeerConnection:
         self.is_active = False
         if self.writer:
             self.writer.close()
-            # await self.writer.wait_closed()
         if self.reader:
             self.reader = None
         self.is_active = False

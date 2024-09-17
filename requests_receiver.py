@@ -55,7 +55,6 @@ class PeerReceiver(PeerConnection):
                 break
         else:
             self.run_task.cancel()
-        # pub.unsubscribe(self._get_handshake, self.got_handshake_event)
 
         return self.info_hash
 
@@ -120,7 +119,6 @@ class RequestsReceiver:
                     await self.add_peer(client_sock, client_addr)
                 except asyncio.TimeoutError:
                     pass
-                    # logging.info("Timeout")
 
     async def add_peer(self, sock, address):
         logging.info(f"Incoming connection from {address}")

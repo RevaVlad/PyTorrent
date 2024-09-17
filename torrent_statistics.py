@@ -1,5 +1,3 @@
-import logging
-
 import bitstring
 import tkinter as tk
 
