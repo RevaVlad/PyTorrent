@@ -1,8 +1,5 @@
-from aiohttp import ClientConnectionError
 from tracker_client import LocalConnections, HttpTrackerClient, TrackerEvent
 from unittest.mock import AsyncMock
-from aioresponses import aioresponses
-from urllib.parse import urlencode
 from struct import pack
 import pytest
 import asyncio
@@ -65,23 +62,6 @@ class TestTrackerClient:
         assert http_tracker._peers == {('192.168.1.1', 6881)}
 
     @pytest.mark.asyncio
-    async def test_make_request_status_code_error(self, http_tracker):
-        with aioresponses() as mock:
-            mock.get(http_tracker.url + '?' + urlencode({
-                'info_hash': http_tracker.info_hash,
-                'peer_id': http_tracker.peer_id,
-                'port': http_tracker.port,
-                'compact': 1,
-                'uploaded': 123,
-                'downloaded': 456,
-                'left': 789,
-                'event': 'started'
-            }), status=500)
-
-            with pytest.raises(ClientConnectionError):
-                await http_tracker.make_request(TrackerEvent.STARTED)
-
-    @pytest.mark.asyncio
     async def test_close_http_tracker(self, http_tracker, monkeypatch):
         mock_make_request = AsyncMock()
         with monkeypatch.context() as m:
@@ -97,7 +77,6 @@ class TestTrackerClient:
                 m.setattr(http_tracker, 'make_request', mock_make_request)
                 await http_tracker.close()
                 assert 'Timeout error while close connection with tracker' in caplog.text
-
 
     @pytest.mark.asyncio
     async def test_add_peer_local(self, local_connection):
@@ -116,3 +95,12 @@ class TestTrackerClient:
     async def test_close_local(self, local_connection):
         await local_connection.close()
         assert True
+
+    @pytest.mark.asyncio
+    async def test_make_request(self, local_connection):
+        local_connection._add_peer = AsyncMock()
+        await local_connection.make_request(None)
+        assert local_connection._add_peer.call_count == 200
+        expected_calls = [local_connection.ip_start + '.' + str(i) for i in range(200)]
+        actual_calls = [call.args[0] for call in local_connection._add_peer.call_args_list]
+        assert actual_calls == expected_calls

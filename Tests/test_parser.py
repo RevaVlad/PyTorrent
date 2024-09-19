@@ -1,5 +1,5 @@
 import pytest
-import mock
+from unittest import mock
 import hashlib
 import bencode
 from math import ceil
@@ -36,23 +36,27 @@ def multi_file_torrent_data():
 
 
 @pytest.fixture
-def mock_open_bencode(single_file_torrent_data):
-    mock_file = mock.mock_open(read_data=b"mocked file content")
-    mock_bdecode = mock.Mock(return_value=single_file_torrent_data)
+def mock_open_bencode(monkeypatch, single_file_torrent_data):
+    with monkeypatch.context() as m:
+        mock_file = mock.mock_open(read_data=b"mocked file content")
+        m.setattr("builtins.open", mock_file)
 
-    with mock.patch("builtins.open", mock_file):
-        with mock.patch("bencode.bdecode", mock_bdecode):
-            yield mock_file, mock_bdecode
+        mock_bdecode = mock.Mock(return_value=single_file_torrent_data)
+        m.setattr(bencode, "bdecode", mock_bdecode)
+
+        yield mock_file, mock_bdecode
 
 
 @pytest.fixture
-def mock_open_bencode_multi(multi_file_torrent_data):
-    mock_file = mock.mock_open(read_data=b"mocked file content")
-    mock_bdecode = mock.Mock(return_value=multi_file_torrent_data)
+def mock_open_bencode_multi(monkeypatch, multi_file_torrent_data):
+    with monkeypatch.context() as m:
+        mock_file = mock.mock_open(read_data=b"mocked file content")
+        m.setattr("builtins.open", mock_file)
 
-    with mock.patch("builtins.open", mock_file):
-        with mock.patch("bencode.bdecode", mock_bdecode):
-            yield mock_file, mock_bdecode
+        mock_bdecode = mock.Mock(return_value=multi_file_torrent_data)
+        m.setattr(bencode, "bdecode", mock_bdecode)
+
+        yield mock_file, mock_bdecode
 
 
 class TestTorrentData:

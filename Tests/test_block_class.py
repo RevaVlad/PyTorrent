@@ -11,11 +11,11 @@ def block():
 
 
 class TestBlockClass:
-    def test_data_property_correct(self, block):
+    def test_data_property(self, block):
         block.data = b'1' * 214
         assert block.data == b'1' * 214
 
-    def test_data_property_incorrect(self, block, caplog):
+    def test_data_property_failed(self, block, caplog):
         with caplog.at_level(logging.ERROR):
             block.data = b'1'
             assert block.data is None

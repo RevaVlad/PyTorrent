@@ -1,5 +1,4 @@
 import heapq
-import time
 
 
 class PriorityQueue:

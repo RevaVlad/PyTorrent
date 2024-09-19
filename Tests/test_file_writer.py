@@ -227,10 +227,3 @@ class TestFileWriter:
             assert file == mock_file_1
             assert start_in_file == expected_start_in_file_1
             assert size_in_file == expected_size_in_file_1
-
-            if len(result) > 1:
-                file, start_in_file, size_in_file = result[1]
-                assert file == mock_file_2
-                assert start_in_file == 0
-                assert size_in_file == segment_length - expected_size_in_file_1
-

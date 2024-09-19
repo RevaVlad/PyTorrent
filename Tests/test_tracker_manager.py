@@ -1,4 +1,3 @@
-import logging
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock

@@ -55,7 +55,7 @@ def segment_downloader(torrent_data, file_writer, torrent_statistics, peers):
 
 class TestSegmentDownloader:
     @pytest.mark.asyncio
-    async def test_download_segment_failed_due_to_hash(self, segment_downloader, file_writer, torrent_data, monkeypatch):
+    async def test_download_segment_failed_hash(self, segment_downloader, file_writer, torrent_data, monkeypatch):
         mock_hash = MagicMock()
         mock_hash.digest.return_value = b'\xFF' * 20  # Simulate wrong hash
         monkeypatch.setattr('hashlib.sha1', lambda data: mock_hash)
@@ -153,9 +153,6 @@ class TestSegmentDownloader:
             mock_send_message.assert_called_once_with(segment_downloader.peer_deletion_event,
                                                       segment_downloader=segment_downloader)
 
-
-
-
     @pytest.mark.asyncio
     async def test_check_tasks_completion_block_retrieved(self, segment_downloader, peers, monkeypatch):
         peer = peers[0]
@@ -185,8 +182,6 @@ class TestSegmentDownloader:
         assert segment_downloader.peers_strikes[peer] == 0
         assert segment_downloader.tasks[peer] == set()
         mock_subscribe.assert_called_once_with(segment_downloader.on_receive_block, peer.receive_event)
-
-    from unittest.mock import MagicMock
 
     def test_close(self, segment_downloader, monkeypatch):
         block1 = MagicMock()
