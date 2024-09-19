@@ -59,11 +59,24 @@ class AsyncFile:
         return self._actual_file is not None
 
 
+class SkippedFile:
+
+    async def write(self, _):
+        return
+
+    async def read(self, _):
+        return
+
+    @property
+    def is_opened(self):
+        return False
+
+
 class FileWriter:
 
     def __init__(self, torrent, destination: Path, selected_files=None):
         if selected_files is None:
-            selected_files = torrent.files
+            selected_files = [file['path'][-1] for file in torrent.files]
 
         self.destination = destination
         self.torrent = torrent
@@ -78,8 +91,11 @@ class FileWriter:
         common_path = self.destination / self.torrent.torrent_name if len(self.torrent.files) != 1 else self.destination
         pref_length = 0
         for file_info in self.torrent.files:
-            file_path = common_path / Path.joinpath(*[Path(path_piece) for path_piece in file_info['path']])
-            self.files.append(self._prepare_file(file_path, file_info['length']))
+            if file_info['path'][-1] in self.selected_files:
+                file_path = common_path / Path.joinpath(*[Path(path_piece) for path_piece in file_info['path']])
+                self.files.append(self._prepare_file(file_path, file_info['length']))
+            else:
+                self.files.append(SkippedFile())
             pref_length += file_info['length']
             self.file_pref_lengths.append(pref_length)
 
@@ -174,7 +190,7 @@ class FileWriter:
         return True
 
     def _shift_files_buffer(self, new_file):
-        if new_file in self.files_buffer:
+        if new_file in self.files_buffer or isinstance(new_file, SkippedFile):
             return
         new_file.open()
         if len(self.files_buffer) >= configuration.FILES_BUFFER_LENGTH:
