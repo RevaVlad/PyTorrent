@@ -222,8 +222,10 @@ class PeerConnection:
             case Message.NotInterestedMessage():
                 self.peer_interested = False
             case Message.HaveMessage():
+                logging.info('got have message')
                 await self.handle_got_piece(new_message)
             case Message.PeerSegmentsMessage():
+                logging.info('got peer segments message')
                 await self.handle_available_piece(new_message)
             case Message.RequestsMessage():
                 self.handle_piece_request(new_message)

@@ -34,23 +34,7 @@ class TorrentApplication:
                 await peer.initiate_bitfield(td.torrent.total_segments, td.torrent_statistics.bitfield)
                 await td.add_peer(peer)
 
-    def get_previous_torrents(self):
-        file = Path(sys.path[0]) / configuration.PICKLE_FILENAME
-        if file.exists():
-            with open(file, 'rb') as f:
-                torrents = pickle.load(f)
-            return torrents
-        return []
-
-    def save_current_torrents(self):
-        project_directory = Path(sys.path[0])
-        location = project_directory / configuration.PICKLE_FILENAME
-        if not location.exists():
-            location.open('w').close()
-        with open(location, 'wb') as f:
-            pickle.dump(self.torrents, f)
-
-    async def download(self, torrent_data, destination, torrent_statistics):
+    async def download(self, torrent_data, destination, torrent_statistics, selected_files):
         if not self.server_started:
             self.request_receiver.start_server()
             self.server_started = True
@@ -59,7 +43,7 @@ class TorrentApplication:
         logging.info(
             f"Total length: {torrent_data.total_length}, Segment length: {torrent_data.segment_length}, Total segments {torrent_data.total_segments}")
 
-        with FileWriter(torrent_data, destination=destination) as file_writer:
+        with FileWriter(torrent_data, destination=destination, selected_files=selected_files) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
                                       self.request_receiver.port,
                                       use_local=configuration.USE_LOCAL_PEERS,
@@ -93,11 +77,13 @@ if __name__ == '__main__':
     async def main():
         files = ["torrent_files/test.torrent"]
         tds = [TorrentData(file) for file in files]
+        logging.info(tds[0].files)
 
         client = TorrentApplication()
         coroutines = [client.download(td,
                                       Path('./downloaded'),
-                                      TorrentStatistics(td.total_length, td.total_segments)) for td in tds]
+                                      TorrentStatistics(td.total_length, td.total_segments),
+                                      selected_files=["README"]) for td in tds]
 
         tasks = [asyncio.create_task(coro) for coro in coroutines]
         await asyncio.gather(*tasks)
