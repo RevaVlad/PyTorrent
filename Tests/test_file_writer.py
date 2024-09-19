@@ -1,7 +1,6 @@
 from collections import deque
 
 import pytest
-import configuration
 import logging
 import hashlib
 from pathlib import Path
