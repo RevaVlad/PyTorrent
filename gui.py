@@ -1,4 +1,6 @@
 import logging
+import sys
+
 import configuration
 import tkinter as tk
 import tk_async_execute as tae
@@ -47,8 +49,17 @@ class Torrents(tk.Frame):
 
     def add_torrent(self, file_location, destination):
         torrent_data = TorrentData(file_location)
-        torrent_stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
+        self._choose_files(torrent_data, destination)
 
+    def _choose_files(self, torrent_data, destination):
+        popup = tk.Toplevel()
+        label = tk.Label(popup, text="This is Popup window")
+        label.grid()
+        btn = tk.Button(popup, text="Close", command=lambda: self._start_download(torrent_data, destination) or popup.destroy())
+        btn.grid(row=1)
+
+    def _start_download(self, torrent_data, destination):
+        torrent_stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
         download_window = tae.async_execute(self.client.download(torrent_data,
                                                                  Path(destination),
                                                                  torrent_stat),
@@ -76,13 +87,15 @@ class MainApplication(tk.Frame):
         choose_destination = tk.Button(self, text="Выбрать destination", command=self.choose_destination_folder)
         choose_destination.grid(row=0, column=1)
 
+        project_directory = Path(sys.path[0])
+
         self.selected_torrent = tk.StringVar()
-        self.selected_torrent.set(r"C:\Users\vladr\PycharmProjects\PyTorrent\torrent_files\test.torrent")
+        self.selected_torrent.set(str(project_directory / "torrent_files" / "test.torrent"))
         selected_torrent_label = tk.Label(self, textvariable=self.selected_torrent)
         selected_torrent_label.grid(row=1, column=0)
 
         self.selected_destination = tk.StringVar()
-        self.selected_destination.set(r"C:\Users\vladr\PycharmProjects\PyTorrent\downloaded")
+        self.selected_destination.set(str(project_directory / "downloaded"))
         selected_destination_label = tk.Label(self, textvariable=self.selected_destination)
         selected_destination_label.grid(row=1, column=1)
 

@@ -5,7 +5,6 @@ import bitstring
 import pytest
 import Message
 from struct import pack
-from random import randint
 
 
 @pytest.fixture
