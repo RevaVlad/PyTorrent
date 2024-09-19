@@ -1,10 +1,11 @@
 from collections import deque
-from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
-from file_writer import FileWriter, AsyncFile
+
 import pytest
 import logging
 import hashlib
+from pathlib import Path
+from unittest.mock import MagicMock, AsyncMock
+from file_writer import FileWriter, AsyncFile
 
 
 @pytest.fixture

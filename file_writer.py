@@ -61,9 +61,13 @@ class AsyncFile:
 
 class FileWriter:
 
-    def __init__(self, torrent, destination: Path):
+    def __init__(self, torrent, destination: Path, selected_files=None):
+        if selected_files is None:
+            selected_files = torrent.files
+
         self.destination = destination
         self.torrent = torrent
+        self.selected_files = selected_files
 
         self.segment_length = torrent.segment_length
         self.file_pref_lengths = [0]
@@ -112,17 +116,39 @@ class FileWriter:
         start_position = segment_id * segment_length
         end_position = start_position + segment_length
 
-        for file_id in range(len(self.files)):
+        files_start = FileWriter.binary_search(self.file_pref_lengths, start_position)
+        files_end = FileWriter.binary_search(self.file_pref_lengths, end_position)
+
+        for file_id in range(files_start, files_end + 1):
             file_start = self.file_pref_lengths[file_id]
             file_end = self.file_pref_lengths[file_id + 1]
 
-            if (start_position <= file_start <= end_position or
-                    start_position <= file_end <= end_position or
-                    file_start <= start_position <= end_position <= file_end):
-                file = self.files[file_id]
-                segment_start_in_file = max(start_position, file_start) - file_start
-                segment_size_in_file = min(file_end, end_position) - segment_start_in_file - file_start
-                yield file, segment_start_in_file, segment_size_in_file
+            file = self.files[file_id]
+            segment_start_in_file = max(start_position, file_start) - file_start
+            segment_size_in_file = min(file_end, end_position) - segment_start_in_file - file_start
+            yield file, segment_start_in_file, segment_size_in_file
+
+    @staticmethod
+    def binary_search(arr, x, find_first_greater=True):
+        left, right = 0, len(arr) - 1
+        result = -1
+
+        while left <= right:
+            mid = left + (right - left) // 2
+            if find_first_greater:
+                if arr[mid] >= x:
+                    result = mid
+                    right = mid - 1
+                else:
+                    left = mid + 1
+            else:
+                if arr[mid] <= x:
+                    result = mid
+                    left = mid + 1
+                else:
+                    right = mid - 1
+
+        return result
 
     async def write_segment(self, segment_id, data: bytes):
         for file, writing_start, size in self.find_segment_in_files(segment_id):
