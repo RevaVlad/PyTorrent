@@ -1,5 +1,7 @@
 import logging
 import hashlib
+import math
+
 import configuration
 from pathlib import Path
 import asyncio
@@ -61,11 +63,11 @@ class AsyncFile:
 
 class SkippedFile:
 
-    async def write(self, _):
+    async def write(self, *args):
         return
 
-    async def read(self, _):
-        return
+    async def read(self, *args):
+        return b''
 
     @property
     def is_opened(self):
@@ -86,6 +88,8 @@ class FileWriter:
         self.file_pref_lengths = [0]
         self.files = []
         self.files_buffer = deque(maxlen=configuration.FILES_BUFFER_LENGTH)
+
+        self.wanted_segments_ranges = []
 
     def __enter__(self):
         common_path = self.destination / self.torrent.torrent_name if len(self.torrent.files) != 1 else self.destination
@@ -108,6 +112,15 @@ class FileWriter:
 
         if exc_type is not None:
             logging.error(f'Got exception of type - "{exc_type}", with value - "{exc_val}" while writing files')
+
+    def find_wanted_segments_ranges(self):
+        ranges = []
+        for i, file in enumerate(self.files):
+            if not isinstance(file, SkippedFile):
+                range_start = self.file_pref_lengths[i] // self.segment_length
+                range_end = min(math.ceil(self.file_pref_lengths[i + 1] / self.segment_length), self.torrent.total_segments - 1)
+                ranges.append((range_start, range_end + 1))
+        return ranges
 
     def _prepare_file(self, file_path: Path, file_length):
         directory_path = file_path.parent
@@ -133,15 +146,15 @@ class FileWriter:
         end_position = start_position + segment_length
 
         files_start = FileWriter.binary_search(self.file_pref_lengths, start_position)
-        files_end = FileWriter.binary_search(self.file_pref_lengths, end_position)
+        files_end = FileWriter.binary_search(self.file_pref_lengths, end_position, find_first_greater=False)
 
-        for file_id in range(files_start, files_end + 1):
+        for file_id in range(files_start, files_end):
             file_start = self.file_pref_lengths[file_id]
             file_end = self.file_pref_lengths[file_id + 1]
 
             file = self.files[file_id]
             segment_start_in_file = max(start_position, file_start) - file_start
-            segment_size_in_file = min(file_end, end_position) - segment_start_in_file - file_start
+            segment_size_in_file = min(file_end, end_position) - file_start
             yield file, segment_start_in_file, segment_size_in_file
 
     @staticmethod
