@@ -40,9 +40,6 @@ class TorrentApplication:
             self.server_started = True
 
         self.torrents.append((torrent_data, destination, torrent_statistics))
-        logging.info(
-            f"Total length: {torrent_data.total_length}, Segment length: {torrent_data.segment_length}, Total segments {torrent_data.total_segments}")
-
         with FileWriter(torrent_data, destination=destination, selected_files=selected_files) as file_writer:
             async with TrackerManager(torrent_data, torrent_statistics,
                                       self.request_receiver.port,
