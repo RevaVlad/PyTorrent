@@ -1,6 +1,6 @@
 import logging
 
-LOGGING_LEVEL = logging.INFO
+LOGGING_LEVEL = logging.CRITICAL
 
 USE_LOCAL_PEERS = False
 USE_HTTP_PEERS = True
