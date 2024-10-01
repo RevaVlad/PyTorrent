@@ -1,7 +1,5 @@
 import asyncio
 import logging
-import pickle
-import sys
 import configuration
 
 from parser import TorrentData
