@@ -53,16 +53,22 @@ class Torrents(tk.Frame):
 
     def _choose_files(self, torrent_data, destination):
         popup = tk.Toplevel()
-        label = tk.Label(popup, text="This is Popup window")
-        label.grid()
-        btn = tk.Button(popup, text="Close", command=lambda: self._start_download(torrent_data, destination) or popup.destroy())
-        btn.grid(row=1)
 
-    def _start_download(self, torrent_data, destination):
+        variables = [tk.BooleanVar(popup, True) for _ in range(len(torrent_data.files))]
+        for index, file in enumerate(torrent_data.files):
+            filepath = file['path']
+            tk.Checkbutton(popup, variable=variables[index], text=filepath).grid()
+
+        btn = tk.Button(popup, text="Start", command=lambda: self._start_download(torrent_data, destination, variables) or popup.destroy())
+        btn.grid()
+
+    def _start_download(self, torrent_data, destination, variables):
+        selected_files = [file['path'][-1] for index, file in enumerate(torrent_data.files) if variables[index].get()]
         torrent_stat = TorrentStatWithVariables(torrent_data.total_length, torrent_data.total_segments)
         download_window = tae.async_execute(self.client.download(torrent_data,
                                                                  Path(destination),
-                                                                 torrent_stat),
+                                                                 torrent_stat,
+                                                                 selected_files=selected_files),
                                             pop_up=False, wait=False, visible=False,
                                             master=self)
         torrent_info = TorrentInfo(self, download_window, torrent_data, torrent_stat)
